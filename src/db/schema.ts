@@ -1,0 +1,430 @@
+import { pgTable, serial, text, integer, timestamp, boolean, decimal } from 'drizzle-orm/pg-core';
+import { relations } from 'drizzle-orm';
+
+// 1. USERS
+export const users = pgTable('users', {
+  id: serial('id').primaryKey(),
+  uid: text('uid').notNull().unique(), // Firebase Auth UID or internal UUID
+  email: text('email').notNull().unique(),
+  passwordHash: text('password_hash'), // For direct email/password auth
+  name: text('name').notNull(),
+  phone: text('phone'),
+  avatarUrl: text('avatar_url'),
+  location: text('location'), // e.g. "São Paulo, SP"
+  role: text('role').notNull().default('USER'), // 'USER' | 'MASTER_OWNER' | 'DELIVERY_DRIVER'
+  status: text('status').notNull().default('ACTIVE'), // 'ACTIVE' | 'SUSPENDED' | 'BLOCKED'
+  planSlug: text('plan_slug').notNull().default('free'), // 'free' | 'basico' | 'premium' | 'lendario'
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// 2. SESSIONS
+export const sessions = pgTable('sessions', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  token: text('token').notNull().unique(),
+  expiresAt: timestamp('expires_at').notNull(),
+  ipAddress: text('ip_address'),
+  userAgent: text('user_agent'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// 3. PROFILES
+export const profiles = pgTable('profiles', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull().unique(),
+  bio: text('bio'),
+  documentNumber: text('document_number'), // CPF/CNPJ
+  rating: text('rating').default('5.0'),
+  totalReviews: integer('total_reviews').default(0).notNull(),
+  preferences: text('preferences'), // JSON string
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// 4. ADDRESSES
+export const addresses = pgTable('addresses', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  recipientName: text('recipient_name').notNull(),
+  phone: text('phone').notNull(),
+  street: text('street').notNull(),
+  number: text('number').notNull(),
+  complement: text('complement'),
+  neighborhood: text('neighborhood').notNull(),
+  city: text('city').notNull(),
+  state: text('state').notNull(),
+  postalCode: text('postal_code').notNull(),
+  isDefault: boolean('is_default').default(false).notNull(),
+  latitude: text('latitude'),
+  longitude: text('longitude'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// 5. PLANS
+export const plans = pgTable('plans', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  slug: text('slug').notNull().unique(), // 'free' | 'basico' | 'premium' | 'lendario'
+  priceCents: integer('price_cents').notNull(),
+  maxActiveListings: integer('max_active_listings').notNull(),
+  commissionPercent: integer('commission_percent').notNull(), // 7 for free, 4 for paid
+  features: text('features').notNull(), // JSON string array
+  status: text('status').notNull().default('ACTIVE'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// 6. SUBSCRIPTIONS
+export const subscriptions = pgTable('subscriptions', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  planId: integer('plan_id').references(() => plans.id).notNull(),
+  status: text('status').notNull().default('ACTIVE'), // 'ACTIVE' | 'EXPIRED' | 'CANCELLED'
+  currentPeriodStart: timestamp('current_period_start').defaultNow().notNull(),
+  currentPeriodEnd: timestamp('current_period_end').notNull(),
+  autoRenew: boolean('auto_renew').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// 7. STORES
+export const stores = pgTable('stores', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  name: text('name').notNull(),
+  slug: text('slug').notNull().unique(),
+  logoUrl: text('logo_url'),
+  bannerUrl: text('banner_url'),
+  description: text('description'),
+  category: text('category').notNull().default('Geral'),
+  location: text('location').notNull(),
+  phone: text('phone'),
+  hours: text('hours'), // e.g. "Seg a Sex: 08h - 18h"
+  rating: text('rating').default('5.0'),
+  offersDelivery: boolean('offers_delivery').default(true).notNull(),
+  offersPickup: boolean('offers_pickup').default(true).notNull(),
+  followersCount: integer('followers_count').default(0).notNull(),
+  status: text('status').notNull().default('ACTIVE'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// 8. CATEGORIES
+export const categories = pgTable('categories', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull().unique(),
+  slug: text('slug').notNull().unique(),
+  icon: text('icon').notNull().default('Tag'),
+  description: text('description'),
+  isActive: boolean('is_active').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// 9. PRODUCTS
+export const products = pgTable('products', {
+  id: serial('id').primaryKey(),
+  storeId: integer('store_id').references(() => stores.id),
+  sellerId: integer('seller_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  name: text('name').notNull(),
+  slug: text('slug').notNull().unique(),
+  description: text('description').notNull(),
+  categoryId: integer('category_id').references(() => categories.id).notNull(),
+  subcategory: text('subcategory'),
+  condition: text('condition').notNull().default('NOVO'), // 'NOVO' | 'USADO'
+  priceCents: integer('price_cents').notNull(),
+  originalPriceCents: integer('original_price_cents'),
+  stock: integer('stock').notNull().default(1),
+  location: text('location').notNull(),
+  offersDelivery: boolean('offers_delivery').default(true).notNull(),
+  offersPickup: boolean('offers_pickup').default(true).notNull(),
+  allowsNegotiation: boolean('allows_negotiation').default(true).notNull(),
+  status: text('status').notNull().default('ACTIVE'), // 'ACTIVE' | 'INACTIVE' | 'ARCHIVED' | 'PENDING_REVIEW'
+  rating: text('rating').default('5.0'),
+  viewsCount: integer('views_count').default(0).notNull(),
+  imageUrl: text('image_url').notNull(),
+  isDemo: boolean('is_demo').default(false).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// 10. PRODUCT_IMAGES
+export const productImages = pgTable('product_images', {
+  id: serial('id').primaryKey(),
+  productId: integer('product_id').references(() => products.id, { onDelete: 'cascade' }).notNull(),
+  imageUrl: text('image_url').notNull(),
+  isPrimary: boolean('is_primary').default(false).notNull(),
+  displayOrder: integer('display_order').default(0).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// 11. SERVICES
+export const services = pgTable('services', {
+  id: serial('id').primaryKey(),
+  providerId: integer('provider_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  name: text('name').notNull(),
+  slug: text('slug').notNull().unique(),
+  description: text('description').notNull(),
+  priceCents: integer('price_cents').notNull(),
+  priceType: text('price_type').notNull().default('STARTING_AT'), // 'FIXED' | 'STARTING_AT'
+  categoryId: integer('category_id').references(() => categories.id).notNull(),
+  location: text('location').notNull(),
+  offersDelivery: boolean('offers_delivery').default(false).notNull(),
+  allowsNegotiation: boolean('allows_negotiation').default(true).notNull(),
+  rating: text('rating').default('5.0'),
+  totalReviews: integer('total_reviews').default(0).notNull(),
+  status: text('status').notNull().default('ACTIVE'),
+  imageUrl: text('image_url').notNull(),
+  isDemo: boolean('is_demo').default(false).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// 12. ORDERS
+export const orders = pgTable('orders', {
+  id: serial('id').primaryKey(),
+  orderNumber: text('order_number').notNull().unique(),
+  buyerId: integer('buyer_id').references(() => users.id).notNull(),
+  sellerId: integer('seller_id').references(() => users.id).notNull(),
+  status: text('status').notNull().default('AWAITING_PAYMENT'),
+  // 'AWAITING_PAYMENT' | 'PAID' | 'PREPARING' | 'READY_FOR_PICKUP' | 'IN_TRANSIT' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'CANCELLED'
+  totalGrossCents: integer('total_gross_cents').notNull(),
+  commissionCents: integer('commission_cents').notNull(),
+  sellerNetCents: integer('seller_net_cents').notNull(),
+  shippingFeeCents: integer('shipping_fee_cents').default(0).notNull(),
+  deliveryType: text('delivery_type').notNull().default('SHIPPING'), // 'SHIPPING' | 'PICKUP'
+  deliveryAddressId: integer('delivery_address_id').references(() => addresses.id),
+  deliveryDriverId: integer('delivery_driver_id').references(() => users.id),
+  deliveryCode: text('delivery_code').notNull(), // 4 digits e.g. "4827"
+  deliveryCodeUsed: boolean('delivery_code_used').default(false).notNull(),
+  deliveryAttempts: integer('delivery_attempts').default(0).notNull(),
+  paidAt: timestamp('paid_at'),
+  deliveredAt: timestamp('delivered_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// 13. ORDER_ITEMS
+export const orderItems = pgTable('order_items', {
+  id: serial('id').primaryKey(),
+  orderId: integer('order_id').references(() => orders.id, { onDelete: 'cascade' }).notNull(),
+  productId: integer('product_id').references(() => products.id),
+  serviceId: integer('service_id').references(() => services.id),
+  itemType: text('item_type').notNull().default('PRODUCT'), // 'PRODUCT' | 'SERVICE'
+  title: text('title').notNull(),
+  unitPriceCents: integer('unit_price_cents').notNull(),
+  quantity: integer('quantity').default(1).notNull(),
+  subtotalCents: integer('subtotal_cents').notNull(),
+  imageUrl: text('image_url'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// 14. NEGOTIATIONS
+export const negotiations = pgTable('negotiations', {
+  id: serial('id').primaryKey(),
+  productId: integer('product_id').references(() => products.id),
+  serviceId: integer('service_id').references(() => services.id),
+  buyerId: integer('buyer_id').references(() => users.id).notNull(),
+  sellerId: integer('seller_id').references(() => users.id).notNull(),
+  initialPriceCents: integer('initial_price_cents').notNull(),
+  currentOfferCents: integer('current_offer_cents').notNull(),
+  lastOfferBy: text('last_offer_by').notNull().default('BUYER'), // 'BUYER' | 'SELLER'
+  status: text('status').notNull().default('OPEN'), // 'OPEN' | 'ACCEPTED' | 'REJECTED' | 'COMPLETED'
+  finalAgreedPriceCents: integer('final_agreed_price_cents'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// 15. NEGOTIATION_MESSAGES
+export const negotiationMessages = pgTable('negotiation_messages', {
+  id: serial('id').primaryKey(),
+  negotiationId: integer('negotiation_id').references(() => negotiations.id, { onDelete: 'cascade' }).notNull(),
+  senderId: integer('sender_id').references(() => users.id).notNull(),
+  message: text('message').notNull(),
+  offerCents: integer('offer_cents'),
+  messageType: text('message_type').notNull().default('MESSAGE'), // 'MESSAGE' | 'OFFER' | 'COUNTER_OFFER' | 'ACCEPT' | 'REJECT'
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// 16. PAYMENTS
+export const payments = pgTable('payments', {
+  id: serial('id').primaryKey(),
+  orderId: integer('order_id').references(() => orders.id),
+  subscriptionId: integer('subscription_id').references(() => subscriptions.id),
+  paymentType: text('payment_type').notNull().default('ORDER'), // 'ORDER' | 'SUBSCRIPTION'
+  amountCents: integer('amount_cents').notNull(),
+  status: text('status').notNull().default('PENDING'), // 'PENDING' | 'APPROVED' | 'CANCELLED' | 'REFUNDED'
+  paymentMethod: text('payment_method').notNull().default('MERCADO_PAGO'),
+  externalReference: text('external_reference').notNull().unique(),
+  mpPaymentId: text('mp_payment_id'),
+  mpStatus: text('mp_status'),
+  mpRawResponse: text('mp_raw_response'),
+  paidAt: timestamp('paid_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// 17. COMMISSIONS
+export const commissions = pgTable('commissions', {
+  id: serial('id').primaryKey(),
+  orderId: integer('order_id').references(() => orders.id).notNull().unique(),
+  sellerId: integer('seller_id').references(() => users.id).notNull(),
+  grossAmountCents: integer('gross_amount_cents').notNull(),
+  commissionPercent: integer('commission_percent').notNull(),
+  commissionCents: integer('commission_cents').notNull(),
+  sellerNetAmountCents: integer('seller_net_amount_cents').notNull(),
+  planNameAtSale: text('plan_name_at_sale').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// 18. DELIVERY_DRIVERS
+export const deliveryDrivers = pgTable('delivery_drivers', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull().unique(),
+  vehicleType: text('vehicle_type').notNull().default('MOTO'), // 'MOTO' | 'CARRO' | 'BICICLETA'
+  plate: text('plate'),
+  region: text('region').notNull(),
+  status: text('status').notNull().default('AVAILABLE'), // 'AVAILABLE' | 'DELIVERING' | 'OFFLINE'
+  rating: text('rating').default('5.0'),
+  totalDeliveries: integer('total_deliveries').default(0).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// 19. DELIVERIES
+export const deliveries = pgTable('deliveries', {
+  id: serial('id').primaryKey(),
+  orderId: integer('order_id').references(() => orders.id).notNull().unique(),
+  driverId: integer('driver_id').references(() => deliveryDrivers.id),
+  status: text('status').notNull().default('ASSIGNED'), // 'ASSIGNED' | 'PICKED_UP' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'FAILED'
+  attemptsCount: integer('attempts_count').default(0).notNull(),
+  confirmedAt: timestamp('confirmed_at'),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// 20. DELIVERY_CODES
+export const deliveryCodes = pgTable('delivery_codes', {
+  id: serial('id').primaryKey(),
+  orderId: integer('order_id').references(() => orders.id, { onDelete: 'cascade' }).notNull().unique(),
+  code: text('code').notNull(), // 4 digits
+  used: boolean('used').default(false).notNull(),
+  attempts: integer('attempts').default(0).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  usedAt: timestamp('used_at'),
+});
+
+// 21. DELIVERY_ATTEMPTS
+export const deliveryAttempts = pgTable('delivery_attempts', {
+  id: serial('id').primaryKey(),
+  orderId: integer('order_id').references(() => orders.id, { onDelete: 'cascade' }).notNull(),
+  driverId: integer('driver_id').references(() => users.id).notNull(),
+  attemptedCode: text('attempted_code').notNull(),
+  isSuccess: boolean('is_success').notNull(),
+  ipAddress: text('ip_address'),
+  userAgent: text('user_agent'),
+  attemptedAt: timestamp('attempted_at').defaultNow().notNull(),
+});
+
+// 22. FAVORITES
+export const favorites = pgTable('favorites', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  itemType: text('item_type').notNull(), // 'PRODUCT' | 'SERVICE' | 'STORE'
+  itemId: integer('item_id').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// 23. REVIEWS
+export const reviews = pgTable('reviews', {
+  id: serial('id').primaryKey(),
+  orderId: integer('order_id').references(() => orders.id),
+  reviewerId: integer('reviewer_id').references(() => users.id).notNull(),
+  targetUserId: integer('target_user_id').references(() => users.id).notNull(),
+  storeId: integer('store_id').references(() => stores.id),
+  rating: integer('rating').notNull(), // 1 to 5
+  comment: text('comment').notNull(),
+  reviewType: text('review_type').notNull().default('SELLER'), // 'SELLER' | 'DRIVER' | 'BUYER'
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// 24. NOTIFICATIONS
+export const notifications = pgTable('notifications', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  title: text('title').notNull(),
+  message: text('message').notNull(),
+  type: text('type').notNull().default('INFO'), // 'SALE' | 'ORDER' | 'OFFER' | 'DELIVERY' | 'SYSTEM'
+  link: text('link'),
+  isRead: boolean('is_read').default(false).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// 25. AUDIT_LOGS
+export const auditLogs = pgTable('audit_logs', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id),
+  action: text('action').notNull(),
+  entityType: text('entity_type').notNull(),
+  entityId: text('entity_id'),
+  details: text('details'),
+  ipAddress: text('ip_address'),
+  userAgent: text('user_agent'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// 26. APP_SETTINGS (Master Owner Configurable)
+export const appSettings = pgTable('app_settings', {
+  id: serial('id').primaryKey(),
+  key: text('key').notNull().unique(),
+  value: text('value').notNull(),
+  description: text('description'),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// RELATIONS
+export const usersRelations = relations(users, ({ one, many }) => ({
+  profile: one(profiles, { fields: [users.id], references: [profiles.userId] }),
+  addresses: many(addresses),
+  stores: many(stores),
+  products: many(products),
+  services: many(services),
+  ordersAsBuyer: many(orders, { relationName: 'buyerOrders' }),
+  ordersAsSeller: many(orders, { relationName: 'sellerOrders' }),
+  notifications: many(notifications),
+  favorites: many(favorites),
+}));
+
+export const productsRelations = relations(products, ({ one, many }) => ({
+  seller: one(users, { fields: [products.sellerId], references: [users.id] }),
+  store: one(stores, { fields: [products.storeId], references: [stores.id] }),
+  category: one(categories, { fields: [products.categoryId], references: [categories.id] }),
+  images: many(productImages),
+}));
+
+export const servicesRelations = relations(services, ({ one }) => ({
+  provider: one(users, { fields: [services.providerId], references: [users.id] }),
+  category: one(categories, { fields: [services.categoryId], references: [categories.id] }),
+}));
+
+export const ordersRelations = relations(orders, ({ one, many }) => ({
+  buyer: one(users, { fields: [orders.buyerId], references: [users.id], relationName: 'buyerOrders' }),
+  seller: one(users, { fields: [orders.sellerId], references: [users.id], relationName: 'sellerOrders' }),
+  items: many(orderItems),
+  deliveryAddress: one(addresses, { fields: [orders.deliveryAddressId], references: [addresses.id] }),
+  deliveryDriver: one(users, { fields: [orders.deliveryDriverId], references: [users.id] }),
+}));
+
+export const orderItemsRelations = relations(orderItems, ({ one }) => ({
+  order: one(orders, { fields: [orderItems.orderId], references: [orders.id] }),
+  product: one(products, { fields: [orderItems.productId], references: [products.id] }),
+  service: one(services, { fields: [orderItems.serviceId], references: [services.id] }),
+}));
+
+export const negotiationsRelations = relations(negotiations, ({ one, many }) => ({
+  buyer: one(users, { fields: [negotiations.buyerId], references: [users.id] }),
+  seller: one(users, { fields: [negotiations.sellerId], references: [users.id] }),
+  product: one(products, { fields: [negotiations.productId], references: [products.id] }),
+  service: one(services, { fields: [negotiations.serviceId], references: [services.id] }),
+  messages: many(negotiationMessages),
+}));

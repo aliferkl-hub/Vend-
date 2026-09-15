@@ -1,0 +1,6 @@
+{
+  "name": "VEND+",
+  "description": "Marketplace local e criador de lojas virtuais com Inteligência Artificial: catálogo verificado, identidade visual, banners, checkout Mercado Pago e entrega protegida.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
