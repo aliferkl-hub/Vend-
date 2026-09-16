@@ -4,7 +4,6 @@ import { newDb, IMemoryDb, DataType } from 'pg-mem';
 import fs from 'fs';
 import path from 'path';
 import { writeJsonAtomic } from './atomicStorage.ts';
-import { runAccountMigrationSync } from '../server/accountMigration.ts';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'vend_database.json');
@@ -155,13 +154,6 @@ export class MemoryPool {
         fs.mkdirSync(DATA_DIR, { recursive: true });
       }
 
-      // Automatically run migration and deduplication before loading into memory
-      try {
-        runAccountMigrationSync();
-      } catch (migErr: any) {
-        console.warn('[Database] Aviso ao executar pré-migração de contas:', migErr.message);
-      }
-
       let raw: string | null = null;
       let usedBackup = false;
 
@@ -223,38 +215,21 @@ export class MemoryPool {
         for (const row of rows) {
           if (!row || typeof row !== 'object') continue;
 
-          // Convert ISO date strings back to Date objects and clean string "null" / "undefined"
+          // Convert ISO date strings back to Date objects
           const convertedRow: Record<string, any> = {};
           for (const [key, val] of Object.entries(row)) {
             if (typeof val === 'string' && ISO_DATE_REGEX.test(val)) {
               convertedRow[key] = new Date(val);
-            } else if (val === 'null' || val === 'undefined') {
-              convertedRow[key] = null;
             } else {
               convertedRow[key] = val;
-            }
-          }
-
-          // Special hardening for users table to guarantee valid email uniqueness & normalized_email
-          if (tbl === 'users') {
-            if (convertedRow.email) {
-              const clean = String(convertedRow.email).trim().toLowerCase();
-              convertedRow.email = clean;
-              convertedRow.normalized_email = clean;
-            }
-            if (convertedRow.username === 'null' || convertedRow.username === 'undefined' || !convertedRow.username) {
-              convertedRow.username = null;
-            }
-            if (convertedRow.passwordHash && !convertedRow.password_hash) {
-              convertedRow.password_hash = convertedRow.passwordHash;
             }
           }
 
           try {
             tableRef.insert(convertedRow);
             totalRowsRestored++;
-          } catch (insertErr: any) {
-            console.warn(`[Database Restore] Aviso ao restaurar linha na tabela ${tbl} (id: ${convertedRow.id}):`, insertErr.message);
+          } catch {
+            // Ignore if row already exists
           }
 
           if (typeof row.id === 'number' && row.id > maxId) {
