@@ -181,7 +181,7 @@ export const SellView: React.FC<SellViewProps> = ({
     }
 
     if (productImages.length === 0) {
-      setErrorMsg('É obrigatório adicionar ao menos 1 foto real do item tocando em "+ ADICIONAR FOTOS".');
+      setErrorMsg('É obrigatório adicionar ao menos 1 foto do anúncio.');
       return;
     }
 

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import path from 'path';
 import fs from 'fs';
-import { requireAuth, AuthRequest } from '../middleware/auth.ts';
+import { authenticateUser, AuthRequest } from '../middleware/auth.ts';
 
 const router = Router();
 
@@ -108,7 +108,7 @@ function processAndSaveImage(rawBase64: string, requestedMime?: string): {
 }
 
 // POST /api/upload - Single or batch image upload
-router.post('/', requireAuth, (req: AuthRequest, res) => {
+router.post('/', authenticateUser, (req: AuthRequest, res) => {
   try {
     const { imageBase64, mimeType, images } = req.body;
 
