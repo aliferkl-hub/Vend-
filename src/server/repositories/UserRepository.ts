@@ -183,6 +183,13 @@ export class UserRepository {
       throw new Error('E-mail inválido ou vazio para criação de conta.');
     }
 
+    // 1. Strict duplicate check before insert
+    const existing = await this.findByEmail(cleanEmail);
+    if (existing) {
+      console.warn(`[AUTH REGISTER] Tentativa de duplicar conta existente para email: ${cleanEmail}`);
+      throw new Error(`CONTA_JA_EXISTE: O e-mail "${cleanEmail}" já possui uma conta cadastrada no VEND+.`);
+    }
+
     console.log(`[AUTH REGISTER] Criando nova conta oficial para email: ${cleanEmail}`);
 
     let passwordHash = data.passwordHash;
@@ -192,16 +199,29 @@ export class UserRepository {
     }
 
     const uid = data.uid || ('vend_' + crypto.randomUUID());
-    const username = data.username
-      ? data.username.trim().toLowerCase()
-      : this.generateDefaultUsername(data.name, cleanEmail);
+    
+    // 2. Ensure username uniqueness
+    let finalUsername = data.username ? data.username.trim().toLowerCase() : null;
+    if (finalUsername) {
+      const existingUserByUsername = await this.findByUsername(finalUsername);
+      if (existingUserByUsername) {
+        throw new Error(`USERNAME_JA_EXISTE: O nome de usuário "${finalUsername}" já está em uso.`);
+      }
+    } else {
+      let candidate = this.generateDefaultUsername(data.name, cleanEmail);
+      let count = 1;
+      while (await this.findByUsername(candidate)) {
+        candidate = `${this.generateDefaultUsername(data.name, cleanEmail)}_${count++}`;
+      }
+      finalUsername = candidate;
+    }
 
     try {
       const [newUser] = await db
         .insert(users)
         .values({
           uid,
-          username,
+          username: finalUsername,
           email: cleanEmail,
           normalizedEmail: cleanEmail,
           passwordHash: passwordHash || null,

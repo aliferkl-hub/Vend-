@@ -22,7 +22,7 @@ export interface MigrationReport {
  * 5. Re-links any associated orders/stores/products so zero user data or history is lost
  * 6. Atomically writes back clean persistent state
  */
-export async function runAccountMigration(): Promise<MigrationReport> {
+export function runAccountMigrationSync(): MigrationReport {
   console.log('================================================================================');
   console.log('[MIGRAÇÃO DE CONTAS] Iniciando verificação e normalização persistente...');
   console.log('================================================================================');
@@ -74,9 +74,16 @@ export async function runAccountMigration(): Promise<MigrationReport> {
       u.normalizedEmail = cleanEmail;
       u.normalized_email = cleanEmail;
 
+      if (u.username === 'null' || u.username === 'undefined') {
+        u.username = null;
+      }
       if (!u.username) {
         const prefix = cleanEmail.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase();
         u.username = prefix.length >= 3 ? prefix : `user_${u.id}`;
+      }
+
+      if (u.passwordHash && !u.password_hash) {
+        u.password_hash = u.passwordHash;
       }
 
       if (u.emailVerified === undefined && u.email_verified === undefined) {
@@ -156,4 +163,8 @@ export async function runAccountMigration(): Promise<MigrationReport> {
     console.error('[MIGRAÇÃO DE CONTAS] Erro durante o processo de migração:', err.message);
     return report;
   }
+}
+
+export async function runAccountMigration(): Promise<MigrationReport> {
+  return runAccountMigrationSync();
 }

@@ -56,61 +56,6 @@
       "created_at": "2026-09-15T20:50:35.401Z"
     },
     {
-      "user_id": 6,
-      "action": "LOGIN",
-      "entity_type": "USER",
-      "entity_id": "6",
-      "details": "{\"email\":\"persist_test_1789506284054@dominio.com\"}",
-      "ip_address": "127.0.0.1",
-      "id": 19,
-      "user_agent": null,
-      "created_at": "2026-09-15T21:04:44.354Z"
-    },
-    {
-      "user_id": 7,
-      "action": "LOGIN",
-      "entity_type": "USER",
-      "entity_id": "7",
-      "details": "{\"email\":\"teste_diag@vendplus.local\"}",
-      "ip_address": "127.0.0.1",
-      "user_agent": "curl/7.88.1",
-      "id": 26,
-      "created_at": "2026-09-16T08:50:42.264Z"
-    },
-    {
-      "user_id": 5,
-      "action": "LOGOUT",
-      "entity_type": "USER",
-      "entity_id": "5",
-      "details": "{\"email\":\"auditoria_1789505970482@teste.com\"}",
-      "id": 13,
-      "ip_address": null,
-      "user_agent": null,
-      "created_at": "2026-09-15T20:59:30.884Z"
-    },
-    {
-      "user_id": 8,
-      "action": "LOGIN",
-      "entity_type": "USER",
-      "entity_id": "8",
-      "details": "{\"email\":\"teste@email.com\"}",
-      "ip_address": "127.0.0.1",
-      "user_agent": "node",
-      "id": 29,
-      "created_at": "2026-09-16T08:59:33.108Z"
-    },
-    {
-      "user_id": 2,
-      "action": "LOGIN",
-      "entity_type": "USER",
-      "entity_id": "2",
-      "details": "{\"email\":\"admin@vendplus.com\"}",
-      "ip_address": "127.0.0.1",
-      "user_agent": "node",
-      "id": 10,
-      "created_at": "2026-09-15T20:51:35.234Z"
-    },
-    {
       "user_id": 8,
       "action": "LOGIN",
       "entity_type": "USER",
@@ -120,28 +65,6 @@
       "user_agent": "node",
       "id": 37,
       "created_at": "2026-09-16T09:00:17.341Z"
-    },
-    {
-      "user_id": 10,
-      "action": "REGISTER",
-      "entity_type": "USER",
-      "entity_id": "10",
-      "details": "{\"email\":\"alifermadeiro@hotmail.com\",\"role\":\"USER\"}",
-      "ip_address": "127.0.0.1",
-      "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.1 Mobile/15E148 Safari/604.1",
-      "id": 45,
-      "created_at": "2026-09-16T09:11:16.407Z"
-    },
-    {
-      "user_id": 3,
-      "action": "LOGIN",
-      "entity_type": "USER",
-      "entity_id": "3",
-      "details": "{\"email\":\"carlos.ferreira@vendplus.com.br\"}",
-      "ip_address": "127.0.0.1",
-      "user_agent": "node",
-      "id": 6,
-      "created_at": "2026-09-15T20:50:49.095Z"
     },
     {
       "user_id": 2,
@@ -155,26 +78,81 @@
       "created_at": "2026-09-16T09:00:17.614Z"
     },
     {
-      "user_id": 8,
+      "user_id": 6,
       "action": "LOGIN",
       "entity_type": "USER",
-      "entity_id": "8",
-      "details": "{\"email\":\"teste@email.com\"}",
+      "entity_id": "6",
+      "details": "{\"email\":\"persist_test_1789506284054@dominio.com\"}",
       "ip_address": "127.0.0.1",
-      "user_agent": "node",
-      "id": 31,
-      "created_at": "2026-09-16T08:59:33.490Z"
+      "id": 21,
+      "user_agent": null,
+      "created_at": "2026-09-15T21:04:54.375Z"
     },
     {
-      "user_id": 8,
+      "user_id": 2,
       "action": "LOGIN",
       "entity_type": "USER",
-      "entity_id": "8",
-      "details": "{\"email\":\"teste@email.com\"}",
+      "entity_id": "2",
+      "details": "{\"email\":\"admin@vendplus.com\"}",
       "ip_address": "127.0.0.1",
       "user_agent": "node",
-      "id": 30,
-      "created_at": "2026-09-16T08:59:33.243Z"
+      "id": 10,
+      "created_at": "2026-09-15T20:51:35.234Z"
+    },
+    {
+      "user_id": 5,
+      "action": "LOGIN",
+      "entity_type": "USER",
+      "entity_id": "5",
+      "details": "{\"email\":\"auditoria_1789505970482@teste.com\"}",
+      "ip_address": "127.0.0.1",
+      "id": 14,
+      "user_agent": null,
+      "created_at": "2026-09-15T20:59:30.997Z"
+    },
+    {
+      "user_id": 1,
+      "action": "LOGIN",
+      "entity_type": "USER",
+      "entity_id": "1",
+      "details": "{\"email\":\"alifergael76@gmail.com\"}",
+      "ip_address": "127.0.0.1",
+      "id": 40,
+      "user_agent": null,
+      "created_at": "2026-09-16T09:08:54.426Z"
+    },
+    {
+      "user_id": 2,
+      "action": "LOGIN",
+      "entity_type": "USER",
+      "entity_id": "2",
+      "details": "{\"email\":\"admin@vendplus.com\"}",
+      "ip_address": "127.0.0.1",
+      "user_agent": "node",
+      "id": 33,
+      "created_at": "2026-09-16T08:59:33.799Z"
+    },
+    {
+      "user_id": 6,
+      "action": "REGISTER",
+      "entity_type": "USER",
+      "entity_id": "6",
+      "details": "{\"email\":\"persist_test_1789506284054@dominio.com\",\"role\":\"USER\"}",
+      "ip_address": "127.0.0.1",
+      "id": 17,
+      "user_agent": null,
+      "created_at": "2026-09-15T21:04:44.215Z"
+    },
+    {
+      "user_id": 9,
+      "action": "REGISTER",
+      "entity_type": "USER",
+      "entity_id": "9",
+      "details": "{\"email\":\"cliente_teste_1789549734577@vendplus.com\",\"role\":\"USER\"}",
+      "ip_address": "127.0.0.1",
+      "id": 41,
+      "user_agent": null,
+      "created_at": "2026-09-16T09:08:54.739Z"
     },
     {
       "user_id": 8,
@@ -188,59 +166,37 @@
       "created_at": "2026-09-16T09:00:16.812Z"
     },
     {
-      "user_id": 7,
-      "action": "REGISTER",
-      "entity_type": "USER",
-      "entity_id": "7",
-      "details": "{\"email\":\"teste_diag@vendplus.local\",\"role\":\"USER\"}",
-      "ip_address": "127.0.0.1",
-      "user_agent": "curl/7.88.1",
-      "id": 24,
-      "created_at": "2026-09-16T08:50:18.422Z"
-    },
-    {
-      "user_id": 7,
+      "user_id": 4,
       "action": "LOGIN",
       "entity_type": "USER",
-      "entity_id": "7",
-      "details": "{\"email\":\"teste_diag@vendplus.local\"}",
+      "entity_id": "4",
+      "details": "{\"email\":\"mariana.souza@vendplus.com.br\"}",
       "ip_address": "127.0.0.1",
-      "user_agent": "curl/7.88.1",
-      "id": 25,
-      "created_at": "2026-09-16T08:50:20.486Z"
+      "user_agent": "node",
+      "id": 8,
+      "created_at": "2026-09-15T20:50:52.610Z"
     },
     {
-      "user_id": 2,
+      "user_id": 3,
       "action": "LOGIN",
       "entity_type": "USER",
-      "entity_id": "2",
-      "details": "{\"email\":\"admin@vendplus.com\"}",
+      "entity_id": "3",
+      "details": "{\"email\":\"carlos.ferreira@vendplus.com.br\"}",
       "ip_address": "127.0.0.1",
-      "id": 23,
-      "user_agent": null,
-      "created_at": "2026-09-15T21:05:08.291Z"
+      "user_agent": "node",
+      "id": 9,
+      "created_at": "2026-09-15T20:51:35.127Z"
     },
     {
-      "user_id": 2,
+      "user_id": 8,
       "action": "LOGIN",
       "entity_type": "USER",
-      "entity_id": "2",
-      "details": "{\"email\":\"admin@vendplus.com\"}",
+      "entity_id": "8",
+      "details": "{\"email\":\"teste@email.com\"}",
       "ip_address": "127.0.0.1",
-      "id": 16,
-      "user_agent": null,
-      "created_at": "2026-09-15T20:59:39.271Z"
-    },
-    {
-      "user_id": 9,
-      "action": "PASSWORD_RESET_REQUESTED",
-      "entity_type": "USER",
-      "entity_id": "9",
-      "details": "{\"email\":\"cliente_teste_1789549734577@vendplus.com\"}",
-      "id": 42,
-      "ip_address": null,
-      "user_agent": null,
-      "created_at": "2026-09-16T09:08:54.780Z"
+      "user_agent": "node",
+      "id": 29,
+      "created_at": "2026-09-16T08:59:33.108Z"
     },
     {
       "user_id": 1,
@@ -261,19 +217,8 @@
       "details": "{\"email\":\"teste@email.com\"}",
       "ip_address": "127.0.0.1",
       "user_agent": "node",
-      "id": 38,
-      "created_at": "2026-09-16T09:00:17.480Z"
-    },
-    {
-      "user_id": 6,
-      "action": "REGISTER",
-      "entity_type": "USER",
-      "entity_id": "6",
-      "details": "{\"email\":\"persist_test_1789506284054@dominio.com\",\"role\":\"USER\"}",
-      "ip_address": "127.0.0.1",
-      "id": 17,
-      "user_agent": null,
-      "created_at": "2026-09-15T21:04:44.215Z"
+      "id": 35,
+      "created_at": "2026-09-16T09:00:16.944Z"
     },
     {
       "user_id": 1,
@@ -287,37 +232,26 @@
       "created_at": "2026-09-16T09:09:01.097Z"
     },
     {
-      "user_id": 5,
+      "user_id": 8,
       "action": "LOGIN",
       "entity_type": "USER",
-      "entity_id": "5",
-      "details": "{\"email\":\"auditoria_1789505970482@teste.com\"}",
+      "entity_id": "8",
+      "details": "{\"email\":\"teste@email.com\"}",
       "ip_address": "127.0.0.1",
-      "id": 15,
-      "user_agent": null,
-      "created_at": "2026-09-15T20:59:39.149Z"
+      "user_agent": "node",
+      "id": 32,
+      "created_at": "2026-09-16T08:59:33.615Z"
     },
     {
-      "user_id": 9,
+      "user_id": 2,
       "action": "LOGIN",
       "entity_type": "USER",
-      "entity_id": "9",
-      "details": "{\"email\":\"cliente_teste_1789549734577@vendplus.com\"}",
+      "entity_id": "2",
+      "details": "{\"email\":\"admin@vendplus.com\"}",
       "ip_address": "127.0.0.1",
-      "id": 43,
+      "id": 20,
       "user_agent": null,
-      "created_at": "2026-09-16T09:08:55.060Z"
-    },
-    {
-      "user_id": 1,
-      "action": "LOGIN",
-      "entity_type": "USER",
-      "entity_id": "1",
-      "details": "{\"email\":\"alifergael76@gmail.com\"}",
-      "ip_address": "127.0.0.1",
-      "id": 40,
-      "user_agent": null,
-      "created_at": "2026-09-16T09:08:54.426Z"
+      "created_at": "2026-09-15T21:04:44.477Z"
     },
     {
       "user_id": 6,
@@ -331,48 +265,26 @@
       "created_at": "2026-09-15T21:05:08.179Z"
     },
     {
-      "user_id": 4,
-      "action": "LOGIN",
+      "user_id": 6,
+      "action": "LOGOUT",
       "entity_type": "USER",
-      "entity_id": "4",
-      "details": "{\"email\":\"mariana.souza@vendplus.com.br\"}",
-      "ip_address": "127.0.0.1",
-      "user_agent": "node",
-      "id": 8,
-      "created_at": "2026-09-15T20:50:52.610Z"
-    },
-    {
-      "user_id": 8,
-      "action": "LOGIN",
-      "entity_type": "USER",
-      "entity_id": "8",
-      "details": "{\"email\":\"teste@email.com\"}",
-      "ip_address": "127.0.0.1",
-      "user_agent": "node",
-      "id": 35,
-      "created_at": "2026-09-16T09:00:16.944Z"
-    },
-    {
-      "user_id": 8,
-      "action": "LOGIN",
-      "entity_type": "USER",
-      "entity_id": "8",
-      "details": "{\"email\":\"teste@email.com\"}",
-      "ip_address": "127.0.0.1",
-      "user_agent": "node",
-      "id": 32,
-      "created_at": "2026-09-16T08:59:33.615Z"
-    },
-    {
-      "user_id": 5,
-      "action": "LOGIN",
-      "entity_type": "USER",
-      "entity_id": "5",
-      "details": "{\"email\":\"auditoria_1789505970482@teste.com\"}",
-      "ip_address": "127.0.0.1",
-      "id": 14,
+      "entity_id": "6",
+      "details": "{\"email\":\"persist_test_1789506284054@dominio.com\"}",
+      "id": 18,
+      "ip_address": null,
       "user_agent": null,
-      "created_at": "2026-09-15T20:59:30.997Z"
+      "created_at": "2026-09-15T21:04:44.250Z"
+    },
+    {
+      "user_id": 9,
+      "action": "PASSWORD_RESET_REQUESTED",
+      "entity_type": "USER",
+      "entity_id": "9",
+      "details": "{\"email\":\"cliente_teste_1789549734577@vendplus.com\"}",
+      "id": 42,
+      "ip_address": null,
+      "user_agent": null,
+      "created_at": "2026-09-16T09:08:54.780Z"
     },
     {
       "user_id": 8,
@@ -386,59 +298,59 @@
       "created_at": "2026-09-16T08:59:32.983Z"
     },
     {
-      "user_id": 1,
-      "action": "LOGIN",
-      "entity_type": "USER",
-      "entity_id": "1",
-      "details": "{\"email\":\"alifergael76@gmail.com\"}",
-      "ip_address": "127.0.0.1",
-      "user_agent": "curl/7.88.1",
-      "id": 48,
-      "created_at": "2026-09-16T11:21:48.000Z"
-    },
-    {
-      "user_id": 6,
-      "action": "LOGIN",
-      "entity_type": "USER",
-      "entity_id": "6",
-      "details": "{\"email\":\"persist_test_1789506284054@dominio.com\"}",
-      "ip_address": "127.0.0.1",
-      "id": 21,
-      "user_agent": null,
-      "created_at": "2026-09-15T21:04:54.375Z"
-    },
-    {
-      "user_id": 5,
-      "action": "LOGIN",
-      "entity_type": "USER",
-      "entity_id": "5",
-      "details": "{\"email\":\"auditoria_1789505970482@teste.com\"}",
-      "ip_address": "127.0.0.1",
-      "id": 12,
-      "user_agent": null,
-      "created_at": "2026-09-15T20:59:30.838Z"
-    },
-    {
-      "user_id": 5,
+      "user_id": 4,
       "action": "REGISTER",
       "entity_type": "USER",
-      "entity_id": "5",
-      "details": "{\"email\":\"auditoria_1789505970482@teste.com\",\"role\":\"USER\"}",
+      "entity_id": "4",
+      "details": "{\"email\":\"mariana.souza@vendplus.com.br\",\"role\":\"USER\"}",
       "ip_address": "127.0.0.1",
-      "id": 11,
-      "user_agent": null,
-      "created_at": "2026-09-15T20:59:30.631Z"
+      "user_agent": "node",
+      "id": 7,
+      "created_at": "2026-09-15T20:50:52.503Z"
     },
     {
-      "user_id": 1,
-      "action": "LOGOUT",
+      "user_id": 3,
+      "action": "LOGIN",
       "entity_type": "USER",
-      "entity_id": "1",
-      "details": "{\"email\":\"alifergael76@gmail.com\"}",
-      "id": 49,
-      "ip_address": null,
+      "entity_id": "3",
+      "details": "{\"email\":\"carlos.ferreira@vendplus.com.br\"}",
+      "ip_address": "127.0.0.1",
+      "user_agent": "node",
+      "id": 6,
+      "created_at": "2026-09-15T20:50:49.095Z"
+    },
+    {
+      "user_id": 9,
+      "action": "LOGIN",
+      "entity_type": "USER",
+      "entity_id": "9",
+      "details": "{\"email\":\"cliente_teste_1789549734577@vendplus.com\"}",
+      "ip_address": "127.0.0.1",
+      "id": 43,
       "user_agent": null,
-      "created_at": "2026-09-16T11:21:53.487Z"
+      "created_at": "2026-09-16T09:08:55.060Z"
+    },
+    {
+      "user_id": 8,
+      "action": "LOGIN",
+      "entity_type": "USER",
+      "entity_id": "8",
+      "details": "{\"email\":\"teste@email.com\"}",
+      "ip_address": "127.0.0.1",
+      "user_agent": "node",
+      "id": 30,
+      "created_at": "2026-09-16T08:59:33.243Z"
+    },
+    {
+      "user_id": 7,
+      "action": "LOGIN",
+      "entity_type": "USER",
+      "entity_id": "7",
+      "details": "{\"email\":\"teste_diag@vendplus.local\"}",
+      "ip_address": "127.0.0.1",
+      "user_agent": "curl/7.88.1",
+      "id": 25,
+      "created_at": "2026-09-16T08:50:20.486Z"
     },
     {
       "user_id": 2,
@@ -459,30 +371,107 @@
       "details": "{\"email\":\"teste@email.com\"}",
       "ip_address": "127.0.0.1",
       "user_agent": "node",
-      "id": 36,
-      "created_at": "2026-09-16T09:00:17.105Z"
+      "id": 31,
+      "created_at": "2026-09-16T08:59:33.490Z"
     },
     {
-      "user_id": 3,
+      "user_id": 5,
       "action": "LOGIN",
       "entity_type": "USER",
-      "entity_id": "3",
-      "details": "{\"email\":\"carlos.ferreira@vendplus.com.br\"}",
+      "entity_id": "5",
+      "details": "{\"email\":\"auditoria_1789505970482@teste.com\"}",
       "ip_address": "127.0.0.1",
-      "user_agent": "node",
-      "id": 9,
-      "created_at": "2026-09-15T20:51:35.127Z"
+      "id": 12,
+      "user_agent": null,
+      "created_at": "2026-09-15T20:59:30.838Z"
     },
     {
-      "user_id": 1,
+      "user_id": 5,
+      "action": "LOGOUT",
+      "entity_type": "USER",
+      "entity_id": "5",
+      "details": "{\"email\":\"auditoria_1789505970482@teste.com\"}",
+      "id": 13,
+      "ip_address": null,
+      "user_agent": null,
+      "created_at": "2026-09-15T20:59:30.884Z"
+    },
+    {
+      "user_id": 5,
       "action": "LOGIN",
       "entity_type": "USER",
-      "entity_id": "1",
-      "details": "{\"email\":\"alifergael76@gmail.com\"}",
+      "entity_id": "5",
+      "details": "{\"email\":\"auditoria_1789505970482@teste.com\"}",
+      "ip_address": "127.0.0.1",
+      "id": 15,
+      "user_agent": null,
+      "created_at": "2026-09-15T20:59:39.149Z"
+    },
+    {
+      "user_id": 5,
+      "action": "REGISTER",
+      "entity_type": "USER",
+      "entity_id": "5",
+      "details": "{\"email\":\"auditoria_1789505970482@teste.com\",\"role\":\"USER\"}",
+      "ip_address": "127.0.0.1",
+      "id": 11,
+      "user_agent": null,
+      "created_at": "2026-09-15T20:59:30.631Z"
+    },
+    {
+      "user_id": 6,
+      "action": "LOGIN",
+      "entity_type": "USER",
+      "entity_id": "6",
+      "details": "{\"email\":\"persist_test_1789506284054@dominio.com\"}",
+      "ip_address": "127.0.0.1",
+      "id": 19,
+      "user_agent": null,
+      "created_at": "2026-09-15T21:04:44.354Z"
+    },
+    {
+      "user_id": 7,
+      "action": "REGISTER",
+      "entity_type": "USER",
+      "entity_id": "7",
+      "details": "{\"email\":\"teste_diag@vendplus.local\",\"role\":\"USER\"}",
       "ip_address": "127.0.0.1",
       "user_agent": "curl/7.88.1",
-      "id": 50,
-      "created_at": "2026-09-16T11:22:00.577Z"
+      "id": 24,
+      "created_at": "2026-09-16T08:50:18.422Z"
+    },
+    {
+      "user_id": 7,
+      "action": "LOGIN",
+      "entity_type": "USER",
+      "entity_id": "7",
+      "details": "{\"email\":\"teste_diag@vendplus.local\"}",
+      "ip_address": "127.0.0.1",
+      "user_agent": "curl/7.88.1",
+      "id": 26,
+      "created_at": "2026-09-16T08:50:42.264Z"
+    },
+    {
+      "user_id": 2,
+      "action": "LOGIN",
+      "entity_type": "USER",
+      "entity_id": "2",
+      "details": "{\"email\":\"admin@vendplus.com\"}",
+      "ip_address": "127.0.0.1",
+      "id": 16,
+      "user_agent": null,
+      "created_at": "2026-09-15T20:59:39.271Z"
+    },
+    {
+      "user_id": 8,
+      "action": "LOGIN",
+      "entity_type": "USER",
+      "entity_id": "8",
+      "details": "{\"email\":\"teste@email.com\"}",
+      "ip_address": "127.0.0.1",
+      "user_agent": "node",
+      "id": 38,
+      "created_at": "2026-09-16T09:00:17.480Z"
     },
     {
       "user_id": 1,
@@ -496,98 +485,40 @@
       "created_at": "2026-09-16T09:28:16.373Z"
     },
     {
-      "user_id": 9,
-      "action": "REGISTER",
-      "entity_type": "USER",
-      "entity_id": "9",
-      "details": "{\"email\":\"cliente_teste_1789549734577@vendplus.com\",\"role\":\"USER\"}",
-      "ip_address": "127.0.0.1",
-      "id": 41,
-      "user_agent": null,
-      "created_at": "2026-09-16T09:08:54.739Z"
-    },
-    {
-      "user_id": 4,
-      "action": "REGISTER",
-      "entity_type": "USER",
-      "entity_id": "4",
-      "details": "{\"email\":\"mariana.souza@vendplus.com.br\",\"role\":\"USER\"}",
-      "ip_address": "127.0.0.1",
-      "user_agent": "node",
-      "id": 7,
-      "created_at": "2026-09-15T20:50:52.503Z"
-    },
-    {
       "user_id": 2,
       "action": "LOGIN",
       "entity_type": "USER",
       "entity_id": "2",
       "details": "{\"email\":\"admin@vendplus.com\"}",
       "ip_address": "127.0.0.1",
-      "user_agent": "node",
-      "id": 33,
-      "created_at": "2026-09-16T08:59:33.799Z"
-    },
-    {
-      "user_id": 6,
-      "action": "LOGOUT",
-      "entity_type": "USER",
-      "entity_id": "6",
-      "details": "{\"email\":\"persist_test_1789506284054@dominio.com\"}",
-      "id": 18,
-      "ip_address": null,
+      "id": 23,
       "user_agent": null,
-      "created_at": "2026-09-15T21:04:44.250Z"
+      "created_at": "2026-09-15T21:05:08.291Z"
     },
     {
-      "user_id": 2,
+      "user_id": 8,
       "action": "LOGIN",
       "entity_type": "USER",
-      "entity_id": "2",
-      "details": "{\"email\":\"admin@vendplus.com\"}",
+      "entity_id": "8",
+      "details": "{\"email\":\"teste@email.com\"}",
       "ip_address": "127.0.0.1",
-      "id": 20,
-      "user_agent": null,
-      "created_at": "2026-09-15T21:04:44.477Z"
+      "user_agent": "node",
+      "id": 36,
+      "created_at": "2026-09-16T09:00:17.105Z"
+    },
+    {
+      "user_id": 10,
+      "action": "REGISTER",
+      "entity_type": "USER",
+      "entity_id": "10",
+      "details": "{\"email\":\"alifermadeiro@hotmail.com\",\"role\":\"USER\"}",
+      "ip_address": "127.0.0.1",
+      "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.1 Mobile/15E148 Safari/604.1",
+      "id": 45,
+      "created_at": "2026-09-16T09:11:16.407Z"
     }
   ],
   "categories": [
-    {
-      "name": "Eletrodomésticos",
-      "slug": "eletrodomesticos",
-      "icon": "Coffee",
-      "description": "Cafeteiras, fritadeiras air fryer, liquidificadores e micro-ondas",
-      "id": 7,
-      "is_active": true,
-      "created_at": "2026-09-15T20:50:14.993Z"
-    },
-    {
-      "name": "Pet Shop e Cuidados",
-      "slug": "pet",
-      "icon": "Dog",
-      "description": "Rações premium, brinquedos, caminhas e acessórios pet",
-      "id": 8,
-      "is_active": true,
-      "created_at": "2026-09-15T20:50:14.995Z"
-    },
-    {
-      "name": "Serviços Especializados",
-      "slug": "servicos",
-      "icon": "Briefcase",
-      "description": "Técnicos, eletricistas, instaladores e manutenção profissional",
-      "id": 9,
-      "is_active": true,
-      "created_at": "2026-09-15T20:50:14.997Z"
-    },
-    {
-      "name": "Moda e Calçados",
-      "slug": "moda",
-      "icon": "Shirt",
-      "description": "Roupas, tênis, bolsas e vestuário masculino e feminino",
-      "id": 10,
-      "is_active": true,
-      "created_at": "2026-09-15T20:50:14.999Z"
-    },
     {
       "name": "Casa e Decoração",
       "slug": "casa",
@@ -659,6 +590,42 @@
       "id": 6,
       "is_active": true,
       "created_at": "2026-09-15T20:50:14.991Z"
+    },
+    {
+      "name": "Eletrodomésticos",
+      "slug": "eletrodomesticos",
+      "icon": "Coffee",
+      "description": "Cafeteiras, fritadeiras air fryer, liquidificadores e micro-ondas",
+      "id": 7,
+      "is_active": true,
+      "created_at": "2026-09-15T20:50:14.993Z"
+    },
+    {
+      "name": "Pet Shop e Cuidados",
+      "slug": "pet",
+      "icon": "Dog",
+      "description": "Rações premium, brinquedos, caminhas e acessórios pet",
+      "id": 8,
+      "is_active": true,
+      "created_at": "2026-09-15T20:50:14.995Z"
+    },
+    {
+      "name": "Serviços Especializados",
+      "slug": "servicos",
+      "icon": "Briefcase",
+      "description": "Técnicos, eletricistas, instaladores e manutenção profissional",
+      "id": 9,
+      "is_active": true,
+      "created_at": "2026-09-15T20:50:14.997Z"
+    },
+    {
+      "name": "Moda e Calçados",
+      "slug": "moda",
+      "icon": "Shirt",
+      "description": "Roupas, tênis, bolsas e vestuário masculino e feminino",
+      "id": 10,
+      "is_active": true,
+      "created_at": "2026-09-15T20:50:14.999Z"
     }
   ],
   "plans": [
@@ -915,6 +882,17 @@
   ],
   "profiles": [
     {
+      "user_id": 7,
+      "bio": "Membro VEND+ desde 16/09/2026",
+      "id": 7,
+      "document_number": null,
+      "rating": "5.0",
+      "total_reviews": 0,
+      "preferences": null,
+      "created_at": "2026-09-16T08:50:18.411Z",
+      "updated_at": "2026-09-16T08:50:18.411Z"
+    },
+    {
       "user_id": 9,
       "bio": "Membro VEND+ desde 16/09/2026",
       "id": 8,
@@ -1001,17 +979,6 @@
       "preferences": null,
       "created_at": "2026-09-15T21:04:44.198Z",
       "updated_at": "2026-09-15T21:04:44.198Z"
-    },
-    {
-      "user_id": 7,
-      "bio": "Membro VEND+ desde 16/09/2026",
-      "id": 7,
-      "document_number": null,
-      "rating": "5.0",
-      "total_reviews": 0,
-      "preferences": null,
-      "created_at": "2026-09-16T08:50:18.411Z",
-      "updated_at": "2026-09-16T08:50:18.411Z"
     }
   ],
   "services": [
@@ -1058,13 +1025,25 @@
   ],
   "sessions": [
     {
-      "user_id": 7,
-      "token": "19572b27bfcf836ea9fc9e89d41c3bca0b3d8090cc627244d90e33b683871267",
-      "expires_at": "2026-10-16T08:50:18.412Z",
+      "user_id": 8,
+      "token": "2af34a3a6e225c14f6ad0b2242206687bd284e41bc5fce035d0b66308fd7dd1c",
+      "expires_at": "2026-10-16T08:59:33.235Z",
       "ip_address": "127.0.0.1",
-      "user_agent": "curl/7.88.1",
-      "id": 21,
-      "created_at": "2026-09-16T08:50:18.418Z",
+      "user_agent": "node",
+      "id": 27,
+      "created_at": "2026-09-16T08:59:33.238Z",
+      "session_id": null,
+      "last_used_at": null,
+      "revoked_at": null
+    },
+    {
+      "user_id": 3,
+      "token": "450c62e2466ed43f4ff3ef8fa3a2f83859416792e2465f341bab5c0cb0b544e0",
+      "expires_at": "2026-10-15T20:51:35.115Z",
+      "ip_address": "127.0.0.1",
+      "user_agent": "node",
+      "id": 8,
+      "created_at": "2026-09-15T20:51:35.123Z",
       "session_id": null,
       "last_used_at": null,
       "revoked_at": null
@@ -1082,42 +1061,6 @@
       "revoked_at": null
     },
     {
-      "session_id": "vend_sess_ee4b8b84-8e76-49ee-aa40-658f7f21bd0d",
-      "user_id": 1,
-      "token": "2b487a47be2b999659f28729003cf03dd7caed3ae6889f7df18def6b445a5416",
-      "expires_at": "2026-10-16T11:22:00.558Z",
-      "last_used_at": "2026-09-16T11:22:00.558Z",
-      "revoked_at": null,
-      "ip_address": "127.0.0.1",
-      "user_agent": "curl/7.88.1",
-      "created_at": "2026-09-16T11:22:00.558Z",
-      "id": 46
-    },
-    {
-      "session_id": "vend_sess_4da26d79-a9c8-44e7-b05e-28503391b0e5",
-      "user_id": 1,
-      "token": "ef17443387d7b8c7b3de5909c0698d0c00c529ec195c22d21812b0a04d82cd97",
-      "expires_at": "2026-10-16T09:28:16.336Z",
-      "last_used_at": "2026-09-16T09:28:16.415Z",
-      "revoked_at": null,
-      "ip_address": "127.0.0.1",
-      "user_agent": null,
-      "created_at": "2026-09-16T09:28:16.336Z",
-      "id": 42
-    },
-    {
-      "user_id": 8,
-      "token": "2d2f48c215b47f83dd3e772289544f282b2af622795bf2513d1c7862aadf2001",
-      "expires_at": "2026-10-16T09:00:17.473Z",
-      "ip_address": "127.0.0.1",
-      "user_agent": "node",
-      "id": 35,
-      "created_at": "2026-09-16T09:00:17.475Z",
-      "session_id": null,
-      "last_used_at": null,
-      "revoked_at": null
-    },
-    {
       "user_id": 5,
       "token": "dd347c670b751f93c81bcb648d52eb0c9d75caa8ade5c302c840a797fac5c8eb",
       "expires_at": "2026-10-15T20:59:30.993Z",
@@ -1130,30 +1073,6 @@
       "revoked_at": null
     },
     {
-      "user_id": 8,
-      "token": "1be1024790c66182c95a6a108b92b1cff61d9168fce69e0440fd10d646892e50",
-      "expires_at": "2026-10-16T08:59:33.608Z",
-      "ip_address": "127.0.0.1",
-      "user_agent": "node",
-      "id": 29,
-      "created_at": "2026-09-16T08:59:33.610Z",
-      "session_id": null,
-      "last_used_at": null,
-      "revoked_at": null
-    },
-    {
-      "session_id": "vend_sess_96187cb5-963c-40d1-b686-a9054970d758",
-      "user_id": 9,
-      "token": "b333e109eba2060851d802fe628e009db025494e3397ef6f25eecc4b4d5f2505",
-      "expires_at": "2026-10-16T09:08:54.725Z",
-      "last_used_at": "2026-09-16T09:08:54.765Z",
-      "revoked_at": "2026-09-16T09:08:54.904Z",
-      "ip_address": "127.0.0.1",
-      "user_agent": null,
-      "created_at": "2026-09-16T09:08:54.725Z",
-      "id": 38
-    },
-    {
       "user_id": 7,
       "token": "24139a337f49db80cce883c1300f1883b480b5d3e024d33ccfd64ee75f330dca",
       "expires_at": "2026-10-16T08:50:20.479Z",
@@ -1161,30 +1080,6 @@
       "user_agent": "curl/7.88.1",
       "id": 22,
       "created_at": "2026-09-16T08:50:20.482Z",
-      "session_id": null,
-      "last_used_at": null,
-      "revoked_at": null
-    },
-    {
-      "user_id": 7,
-      "token": "db1a81673590c2f6bf8df5c399c819c15ac2b749aa6b8ed6a6f747adf9dd94a1",
-      "expires_at": "2026-10-16T08:50:42.252Z",
-      "ip_address": "127.0.0.1",
-      "user_agent": "curl/7.88.1",
-      "id": 23,
-      "created_at": "2026-09-16T08:50:42.260Z",
-      "session_id": null,
-      "last_used_at": null,
-      "revoked_at": null
-    },
-    {
-      "user_id": 2,
-      "token": "1f3bacba9e2158efcae6514279126949c9b81b930ff454bbfdbdb5d5d2283fcd",
-      "expires_at": "2026-10-16T09:00:17.606Z",
-      "ip_address": "127.0.0.1",
-      "user_agent": "node",
-      "id": 36,
-      "created_at": "2026-09-16T09:00:17.610Z",
       "session_id": null,
       "last_used_at": null,
       "revoked_at": null
@@ -1202,30 +1097,6 @@
       "revoked_at": null
     },
     {
-      "user_id": 2,
-      "token": "556f544b99fc338ec5bad80277e77fe20ae6a1843b837f1dc77683602698680c",
-      "expires_at": "2026-10-16T08:59:33.788Z",
-      "ip_address": "127.0.0.1",
-      "user_agent": "node",
-      "id": 30,
-      "created_at": "2026-09-16T08:59:33.791Z",
-      "session_id": null,
-      "last_used_at": null,
-      "revoked_at": null
-    },
-    {
-      "session_id": "vend_sess_fec343eb-b1e4-40c0-b0cd-7700ca699db5",
-      "user_id": 1,
-      "token": "d6ddd5c358741c39a2c099791fa0e0e8ed823868159b46c9cab3101d5790d358",
-      "expires_at": "2026-10-16T09:09:01.081Z",
-      "last_used_at": "2026-09-16T09:09:01.108Z",
-      "revoked_at": null,
-      "ip_address": "127.0.0.1",
-      "user_agent": null,
-      "created_at": "2026-09-16T09:09:01.081Z",
-      "id": 40
-    },
-    {
       "user_id": 8,
       "token": "5e5353630c74079b00418514015855254520ceb53160ef66907483cf820391a0",
       "expires_at": "2026-10-16T09:00:17.334Z",
@@ -1236,30 +1107,6 @@
       "session_id": null,
       "last_used_at": null,
       "revoked_at": null
-    },
-    {
-      "user_id": 2,
-      "token": "756fde14fcac3810363ff1ddf9727eb1c3c1c2ab1e314432445a462990e7ce1e",
-      "expires_at": "2026-10-15T20:59:39.265Z",
-      "ip_address": "127.0.0.1",
-      "id": 14,
-      "user_agent": null,
-      "created_at": "2026-09-15T20:59:39.268Z",
-      "session_id": null,
-      "last_used_at": null,
-      "revoked_at": null
-    },
-    {
-      "session_id": "vend_sess_73240f9c-3e87-431c-b15d-1f15bdc8f9b4",
-      "user_id": 12,
-      "token": "1ddc59e74633e145ef21202a4f6d6057971d49a11cb8a6bbec6f2e37feff105c",
-      "expires_at": "2026-10-16T11:21:20.165Z",
-      "last_used_at": "2026-09-16T11:21:20.193Z",
-      "revoked_at": "2026-09-16T11:21:20.198Z",
-      "ip_address": "127.0.0.1",
-      "user_agent": "AutomatedTestAgent",
-      "created_at": "2026-09-16T11:21:20.165Z",
-      "id": 43
     },
     {
       "user_id": 4,
@@ -1274,30 +1121,6 @@
       "revoked_at": null
     },
     {
-      "user_id": 2,
-      "token": "deb254e759163b011dbfd12e867d3ebdfdd8968a8a82c29d537883fe763c4bdb",
-      "expires_at": "2026-10-15T21:04:44.471Z",
-      "ip_address": "127.0.0.1",
-      "id": 17,
-      "user_agent": null,
-      "created_at": "2026-09-15T21:04:44.474Z",
-      "session_id": null,
-      "last_used_at": null,
-      "revoked_at": null
-    },
-    {
-      "user_id": 6,
-      "token": "207aadb22e2f7bc45ae967daf14d57fbd8f2f61d6c47ac45703504cabc10ecbc",
-      "expires_at": "2026-10-15T21:04:54.363Z",
-      "ip_address": "127.0.0.1",
-      "id": 18,
-      "user_agent": null,
-      "created_at": "2026-09-15T21:04:54.371Z",
-      "session_id": null,
-      "last_used_at": null,
-      "revoked_at": null
-    },
-    {
       "user_id": 8,
       "token": "711acb77578e2b0c0f2a7c237a37aa84e19d9b338306ab865d7de403be6a0dcb",
       "expires_at": "2026-10-16T08:59:33.483Z",
@@ -1305,30 +1128,6 @@
       "user_agent": "node",
       "id": 28,
       "created_at": "2026-09-16T08:59:33.485Z",
-      "session_id": null,
-      "last_used_at": null,
-      "revoked_at": null
-    },
-    {
-      "user_id": 4,
-      "token": "be284c32c607bcd3f7abc3c2ee1fe971bd6f35421dfb8691dc258a91a42e477a",
-      "expires_at": "2026-10-15T20:50:52.498Z",
-      "ip_address": "127.0.0.1",
-      "user_agent": "node",
-      "id": 6,
-      "created_at": "2026-09-15T20:50:52.501Z",
-      "session_id": null,
-      "last_used_at": null,
-      "revoked_at": null
-    },
-    {
-      "user_id": 6,
-      "token": "aac27e4b1340d2915ee9cec0d8da06f5f76ddf13e0d9ae39b456bd2e07dae233",
-      "expires_at": "2026-10-15T21:04:44.350Z",
-      "ip_address": "127.0.0.1",
-      "id": 16,
-      "user_agent": null,
-      "created_at": "2026-09-15T21:04:44.352Z",
       "session_id": null,
       "last_used_at": null,
       "revoked_at": null
@@ -1347,132 +1146,12 @@
     },
     {
       "user_id": 8,
-      "token": "073218ab56c8c8dd00620553f30d0addd74dcca399ade0c0d009d59c4474cd42",
-      "expires_at": "2026-10-16T09:00:17.093Z",
-      "ip_address": "127.0.0.1",
-      "user_agent": "node",
-      "id": 33,
-      "created_at": "2026-09-16T09:00:17.098Z",
-      "session_id": null,
-      "last_used_at": null,
-      "revoked_at": null
-    },
-    {
-      "user_id": 3,
-      "token": "6191122198b86671021003ca01a61bbf89f270013c8abf59d0f9da4699bc6159",
-      "expires_at": "2026-10-15T20:50:27.744Z",
-      "ip_address": "127.0.0.1",
-      "user_agent": "node",
-      "id": 1,
-      "created_at": "2026-09-15T20:50:27.749Z",
-      "session_id": null,
-      "last_used_at": null,
-      "revoked_at": null
-    },
-    {
-      "session_id": "vend_sess_318b7a1b-ebf7-4a27-acc9-ef912f28ae92",
-      "user_id": 12,
-      "token": "e311a5f41a496c09c8f2324fbcea9271d7275308977fdf1459dd5719dfae67bd",
-      "expires_at": "2026-10-16T11:21:20.314Z",
-      "last_used_at": "2026-09-16T11:21:20.338Z",
-      "revoked_at": null,
-      "ip_address": "127.0.0.1",
-      "user_agent": "AutomatedTestAgent",
-      "created_at": "2026-09-16T11:21:20.314Z",
-      "id": 44
-    },
-    {
-      "user_id": 6,
-      "token": "ed33fb08f101e0f07a65ac183a2ed0d2995e5e5f0512eaa4a518e270919f2607",
-      "expires_at": "2026-10-15T21:05:08.174Z",
-      "ip_address": "127.0.0.1",
-      "id": 19,
-      "user_agent": null,
-      "created_at": "2026-09-15T21:05:08.177Z",
-      "session_id": null,
-      "last_used_at": null,
-      "revoked_at": null
-    },
-    {
-      "user_id": 8,
-      "token": "2af34a3a6e225c14f6ad0b2242206687bd284e41bc5fce035d0b66308fd7dd1c",
-      "expires_at": "2026-10-16T08:59:33.235Z",
-      "ip_address": "127.0.0.1",
-      "user_agent": "node",
-      "id": 27,
-      "created_at": "2026-09-16T08:59:33.238Z",
-      "session_id": null,
-      "last_used_at": null,
-      "revoked_at": null
-    },
-    {
-      "user_id": 8,
-      "token": "9428f89364ca27ba89d12fd14535cd8eb743bf0c8c5d85a0e7eb3c9beb9d6d3d",
-      "expires_at": "2026-10-16T09:00:16.799Z",
-      "ip_address": "127.0.0.1",
-      "user_agent": "node",
-      "id": 31,
-      "created_at": "2026-09-16T09:00:16.804Z",
-      "session_id": null,
-      "last_used_at": null,
-      "revoked_at": null
-    },
-    {
-      "user_id": 5,
-      "token": "b023b02c853beba48339a9b700e6be4743c5cd4b37db4b5bb16621d5329ec774",
-      "expires_at": "2026-10-15T20:59:39.135Z",
-      "ip_address": "127.0.0.1",
-      "id": 13,
-      "user_agent": null,
-      "created_at": "2026-09-15T20:59:39.144Z",
-      "session_id": null,
-      "last_used_at": null,
-      "revoked_at": null
-    },
-    {
-      "user_id": 3,
-      "token": "ce31528a1ce4f581102f0c84a8dea170e6e26e98f54da90d98125e39a6edeef1",
-      "expires_at": "2026-10-15T20:50:49.083Z",
-      "ip_address": "127.0.0.1",
-      "user_agent": "node",
-      "id": 5,
-      "created_at": "2026-09-15T20:50:49.091Z",
-      "session_id": null,
-      "last_used_at": null,
-      "revoked_at": null
-    },
-    {
-      "user_id": 8,
       "token": "594ae490b51bc529e9c3a9577c2d6065c0d026b2298cf3bae45c58e8d16adb17",
       "expires_at": "2026-10-16T08:59:33.098Z",
       "ip_address": "127.0.0.1",
       "user_agent": "node",
       "id": 26,
       "created_at": "2026-09-16T08:59:33.101Z",
-      "session_id": null,
-      "last_used_at": null,
-      "revoked_at": null
-    },
-    {
-      "session_id": "vend_sess_e24eb85d-92c4-4315-999d-82743a717e28",
-      "user_id": 10,
-      "token": "eae03d79ee371125a6f958c61d1ed0ac3722127d67339778496db396b21345eb",
-      "expires_at": "2026-10-16T09:11:16.380Z",
-      "last_used_at": "2026-09-16T09:22:35.468Z",
-      "revoked_at": null,
-      "ip_address": "127.0.0.1",
-      "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.1 Mobile/15E148 Safari/604.1",
-      "created_at": "2026-09-16T09:11:16.380Z",
-      "id": 41
-    },
-    {
-      "user_id": 3,
-      "token": "6b76231019f582793be260132993731b6ff8bb01bf48066c3ed240c7ae77cf8b",
-      "expires_at": "2026-10-15T20:50:35.389Z",
-      "ip_address": "127.0.0.1",
-      "user_agent": "node",
-      "id": 4,
-      "created_at": "2026-09-15T20:50:35.398Z",
       "session_id": null,
       "last_used_at": null,
       "revoked_at": null
@@ -1490,30 +1169,6 @@
       "id": 37
     },
     {
-      "user_id": 2,
-      "token": "df3e800e65042b511071957527bdf83236779015c8c80558ebbd226166586e97",
-      "expires_at": "2026-10-16T08:57:53.334Z",
-      "ip_address": "127.0.0.1",
-      "user_agent": "node",
-      "id": 24,
-      "created_at": "2026-09-16T08:57:53.344Z",
-      "session_id": null,
-      "last_used_at": null,
-      "revoked_at": null
-    },
-    {
-      "session_id": "vend_sess_10dacf81-60a4-4793-a10f-13d691c1092e",
-      "user_id": 9,
-      "token": "bcf8137cb61fc4bc898f3d946d17bcd9af7024da4785200e7d5c9f53203bd999",
-      "expires_at": "2026-10-16T09:08:55.038Z",
-      "last_used_at": "2026-09-16T09:08:55.038Z",
-      "revoked_at": null,
-      "ip_address": "127.0.0.1",
-      "user_agent": null,
-      "created_at": "2026-09-16T09:08:55.038Z",
-      "id": 39
-    },
-    {
       "user_id": 3,
       "token": "07c5349792cb04a5ae408c6c87b8d3471f02bbcd611a86e13448f7d3d4bd22e4",
       "expires_at": "2026-10-15T20:50:28.130Z",
@@ -1527,12 +1182,204 @@
     },
     {
       "user_id": 8,
+      "token": "1be1024790c66182c95a6a108b92b1cff61d9168fce69e0440fd10d646892e50",
+      "expires_at": "2026-10-16T08:59:33.608Z",
+      "ip_address": "127.0.0.1",
+      "user_agent": "node",
+      "id": 29,
+      "created_at": "2026-09-16T08:59:33.610Z",
+      "session_id": null,
+      "last_used_at": null,
+      "revoked_at": null
+    },
+    {
+      "user_id": 2,
+      "token": "756fde14fcac3810363ff1ddf9727eb1c3c1c2ab1e314432445a462990e7ce1e",
+      "expires_at": "2026-10-15T20:59:39.265Z",
+      "ip_address": "127.0.0.1",
+      "id": 14,
+      "user_agent": null,
+      "created_at": "2026-09-15T20:59:39.268Z",
+      "session_id": null,
+      "last_used_at": null,
+      "revoked_at": null
+    },
+    {
+      "user_id": 8,
+      "token": "073218ab56c8c8dd00620553f30d0addd74dcca399ade0c0d009d59c4474cd42",
+      "expires_at": "2026-10-16T09:00:17.093Z",
+      "ip_address": "127.0.0.1",
+      "user_agent": "node",
+      "id": 33,
+      "created_at": "2026-09-16T09:00:17.098Z",
+      "session_id": null,
+      "last_used_at": null,
+      "revoked_at": null
+    },
+    {
+      "user_id": 7,
+      "token": "19572b27bfcf836ea9fc9e89d41c3bca0b3d8090cc627244d90e33b683871267",
+      "expires_at": "2026-10-16T08:50:18.412Z",
+      "ip_address": "127.0.0.1",
+      "user_agent": "curl/7.88.1",
+      "id": 21,
+      "created_at": "2026-09-16T08:50:18.418Z",
+      "session_id": null,
+      "last_used_at": null,
+      "revoked_at": null
+    },
+    {
+      "user_id": 2,
+      "token": "1f3bacba9e2158efcae6514279126949c9b81b930ff454bbfdbdb5d5d2283fcd",
+      "expires_at": "2026-10-16T09:00:17.606Z",
+      "ip_address": "127.0.0.1",
+      "user_agent": "node",
+      "id": 36,
+      "created_at": "2026-09-16T09:00:17.610Z",
+      "session_id": null,
+      "last_used_at": null,
+      "revoked_at": null
+    },
+    {
+      "user_id": 6,
+      "token": "207aadb22e2f7bc45ae967daf14d57fbd8f2f61d6c47ac45703504cabc10ecbc",
+      "expires_at": "2026-10-15T21:04:54.363Z",
+      "ip_address": "127.0.0.1",
+      "id": 18,
+      "user_agent": null,
+      "created_at": "2026-09-15T21:04:54.371Z",
+      "session_id": null,
+      "last_used_at": null,
+      "revoked_at": null
+    },
+    {
+      "user_id": 3,
+      "token": "6191122198b86671021003ca01a61bbf89f270013c8abf59d0f9da4699bc6159",
+      "expires_at": "2026-10-15T20:50:27.744Z",
+      "ip_address": "127.0.0.1",
+      "user_agent": "node",
+      "id": 1,
+      "created_at": "2026-09-15T20:50:27.749Z",
+      "session_id": null,
+      "last_used_at": null,
+      "revoked_at": null
+    },
+    {
+      "user_id": 5,
+      "token": "b023b02c853beba48339a9b700e6be4743c5cd4b37db4b5bb16621d5329ec774",
+      "expires_at": "2026-10-15T20:59:39.135Z",
+      "ip_address": "127.0.0.1",
+      "id": 13,
+      "user_agent": null,
+      "created_at": "2026-09-15T20:59:39.144Z",
+      "session_id": null,
+      "last_used_at": null,
+      "revoked_at": null
+    },
+    {
+      "session_id": "vend_sess_e24eb85d-92c4-4315-999d-82743a717e28",
+      "user_id": 10,
+      "token": "eae03d79ee371125a6f958c61d1ed0ac3722127d67339778496db396b21345eb",
+      "expires_at": "2026-10-16T09:11:16.380Z",
+      "last_used_at": "2026-09-16T09:22:35.468Z",
+      "revoked_at": null,
+      "ip_address": "127.0.0.1",
+      "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.1 Mobile/15E148 Safari/604.1",
+      "created_at": "2026-09-16T09:11:16.380Z",
+      "id": 41
+    },
+    {
+      "user_id": 2,
+      "token": "df3e800e65042b511071957527bdf83236779015c8c80558ebbd226166586e97",
+      "expires_at": "2026-10-16T08:57:53.334Z",
+      "ip_address": "127.0.0.1",
+      "user_agent": "node",
+      "id": 24,
+      "created_at": "2026-09-16T08:57:53.344Z",
+      "session_id": null,
+      "last_used_at": null,
+      "revoked_at": null
+    },
+    {
+      "user_id": 8,
       "token": "5f86e34b9cd5d26bced7ce9beea763d164f8195c2bb177e4be1b5e3db1b77ffe",
       "expires_at": "2026-10-16T09:00:16.935Z",
       "ip_address": "127.0.0.1",
       "user_agent": "node",
       "id": 32,
       "created_at": "2026-09-16T09:00:16.938Z",
+      "session_id": null,
+      "last_used_at": null,
+      "revoked_at": null
+    },
+    {
+      "user_id": 7,
+      "token": "db1a81673590c2f6bf8df5c399c819c15ac2b749aa6b8ed6a6f747adf9dd94a1",
+      "expires_at": "2026-10-16T08:50:42.252Z",
+      "ip_address": "127.0.0.1",
+      "user_agent": "curl/7.88.1",
+      "id": 23,
+      "created_at": "2026-09-16T08:50:42.260Z",
+      "session_id": null,
+      "last_used_at": null,
+      "revoked_at": null
+    },
+    {
+      "user_id": 2,
+      "token": "deb254e759163b011dbfd12e867d3ebdfdd8968a8a82c29d537883fe763c4bdb",
+      "expires_at": "2026-10-15T21:04:44.471Z",
+      "ip_address": "127.0.0.1",
+      "id": 17,
+      "user_agent": null,
+      "created_at": "2026-09-15T21:04:44.474Z",
+      "session_id": null,
+      "last_used_at": null,
+      "revoked_at": null
+    },
+    {
+      "user_id": 6,
+      "token": "ed33fb08f101e0f07a65ac183a2ed0d2995e5e5f0512eaa4a518e270919f2607",
+      "expires_at": "2026-10-15T21:05:08.174Z",
+      "ip_address": "127.0.0.1",
+      "id": 19,
+      "user_agent": null,
+      "created_at": "2026-09-15T21:05:08.177Z",
+      "session_id": null,
+      "last_used_at": null,
+      "revoked_at": null
+    },
+    {
+      "user_id": 8,
+      "token": "2d2f48c215b47f83dd3e772289544f282b2af622795bf2513d1c7862aadf2001",
+      "expires_at": "2026-10-16T09:00:17.473Z",
+      "ip_address": "127.0.0.1",
+      "user_agent": "node",
+      "id": 35,
+      "created_at": "2026-09-16T09:00:17.475Z",
+      "session_id": null,
+      "last_used_at": null,
+      "revoked_at": null
+    },
+    {
+      "session_id": "vend_sess_fec343eb-b1e4-40c0-b0cd-7700ca699db5",
+      "user_id": 1,
+      "token": "d6ddd5c358741c39a2c099791fa0e0e8ed823868159b46c9cab3101d5790d358",
+      "expires_at": "2026-10-16T09:09:01.081Z",
+      "last_used_at": "2026-09-16T09:09:01.108Z",
+      "revoked_at": null,
+      "ip_address": "127.0.0.1",
+      "user_agent": null,
+      "created_at": "2026-09-16T09:09:01.081Z",
+      "id": 40
+    },
+    {
+      "user_id": 6,
+      "token": "aac27e4b1340d2915ee9cec0d8da06f5f76ddf13e0d9ae39b456bd2e07dae233",
+      "expires_at": "2026-10-15T21:04:44.350Z",
+      "ip_address": "127.0.0.1",
+      "id": 16,
+      "user_agent": null,
+      "created_at": "2026-09-15T21:04:44.352Z",
       "session_id": null,
       "last_used_at": null,
       "revoked_at": null
@@ -1551,27 +1398,99 @@
     },
     {
       "user_id": 3,
-      "token": "450c62e2466ed43f4ff3ef8fa3a2f83859416792e2465f341bab5c0cb0b544e0",
-      "expires_at": "2026-10-15T20:51:35.115Z",
+      "token": "ce31528a1ce4f581102f0c84a8dea170e6e26e98f54da90d98125e39a6edeef1",
+      "expires_at": "2026-10-15T20:50:49.083Z",
       "ip_address": "127.0.0.1",
       "user_agent": "node",
-      "id": 8,
-      "created_at": "2026-09-15T20:51:35.123Z",
+      "id": 5,
+      "created_at": "2026-09-15T20:50:49.091Z",
       "session_id": null,
       "last_used_at": null,
       "revoked_at": null
     },
     {
-      "session_id": "vend_sess_288d313a-3464-4968-9f31-a0b118f858ef",
-      "user_id": 1,
-      "token": "7012319a7b80b6146830e1024b26a388ae53c19cc879213111626a03739a8ef2",
-      "expires_at": "2026-10-16T11:21:47.918Z",
-      "last_used_at": "2026-09-16T11:21:53.459Z",
-      "revoked_at": "2026-09-16T11:21:53.465Z",
+      "user_id": 3,
+      "token": "6b76231019f582793be260132993731b6ff8bb01bf48066c3ed240c7ae77cf8b",
+      "expires_at": "2026-10-15T20:50:35.389Z",
       "ip_address": "127.0.0.1",
-      "user_agent": "curl/7.88.1",
-      "created_at": "2026-09-16T11:21:47.918Z",
-      "id": 45
+      "user_agent": "node",
+      "id": 4,
+      "created_at": "2026-09-15T20:50:35.398Z",
+      "session_id": null,
+      "last_used_at": null,
+      "revoked_at": null
+    },
+    {
+      "session_id": "vend_sess_10dacf81-60a4-4793-a10f-13d691c1092e",
+      "user_id": 9,
+      "token": "bcf8137cb61fc4bc898f3d946d17bcd9af7024da4785200e7d5c9f53203bd999",
+      "expires_at": "2026-10-16T09:08:55.038Z",
+      "last_used_at": "2026-09-16T09:08:55.038Z",
+      "revoked_at": null,
+      "ip_address": "127.0.0.1",
+      "user_agent": null,
+      "created_at": "2026-09-16T09:08:55.038Z",
+      "id": 39
+    },
+    {
+      "session_id": "vend_sess_4da26d79-a9c8-44e7-b05e-28503391b0e5",
+      "user_id": 1,
+      "token": "ef17443387d7b8c7b3de5909c0698d0c00c529ec195c22d21812b0a04d82cd97",
+      "expires_at": "2026-10-16T09:28:16.336Z",
+      "last_used_at": "2026-09-16T09:28:16.415Z",
+      "revoked_at": null,
+      "ip_address": "127.0.0.1",
+      "user_agent": null,
+      "created_at": "2026-09-16T09:28:16.336Z",
+      "id": 42
+    },
+    {
+      "user_id": 2,
+      "token": "556f544b99fc338ec5bad80277e77fe20ae6a1843b837f1dc77683602698680c",
+      "expires_at": "2026-10-16T08:59:33.788Z",
+      "ip_address": "127.0.0.1",
+      "user_agent": "node",
+      "id": 30,
+      "created_at": "2026-09-16T08:59:33.791Z",
+      "session_id": null,
+      "last_used_at": null,
+      "revoked_at": null
+    },
+    {
+      "user_id": 4,
+      "token": "be284c32c607bcd3f7abc3c2ee1fe971bd6f35421dfb8691dc258a91a42e477a",
+      "expires_at": "2026-10-15T20:50:52.498Z",
+      "ip_address": "127.0.0.1",
+      "user_agent": "node",
+      "id": 6,
+      "created_at": "2026-09-15T20:50:52.501Z",
+      "session_id": null,
+      "last_used_at": null,
+      "revoked_at": null
+    },
+    {
+      "user_id": 8,
+      "token": "9428f89364ca27ba89d12fd14535cd8eb743bf0c8c5d85a0e7eb3c9beb9d6d3d",
+      "expires_at": "2026-10-16T09:00:16.799Z",
+      "ip_address": "127.0.0.1",
+      "user_agent": "node",
+      "id": 31,
+      "created_at": "2026-09-16T09:00:16.804Z",
+      "session_id": null,
+      "last_used_at": null,
+      "revoked_at": null
+    },
+    {
+      "session_id": "vend_sess_96187cb5-963c-40d1-b686-a9054970d758",
+      "user_id": 9,
+      "token": "b333e109eba2060851d802fe628e009db025494e3397ef6f25eecc4b4d5f2505",
+      "expires_at": "2026-10-16T09:08:54.725Z",
+      "last_used_at": "2026-09-16T09:08:54.765Z",
+      "revoked_at": "2026-09-16T09:08:54.904Z",
+      "ip_address": "127.0.0.1",
+      "user_agent": null,
+      "created_at": "2026-09-16T09:08:54.725Z",
+      "id": 38
     }
   ],
   "stores": [
@@ -1598,25 +1517,24 @@
   ],
   "users": [
     {
-      "uid": "vend_1aef4015-3218-4f49-adf1-07f765178d9c",
-      "username": "entregador_1789557680476",
-      "email": "entregador_1789557680476@teste.com",
-      "normalized_email": "entregador_1789557680476@teste.com",
-      "password_hash": "$2b$10$Oqgywg5ViCJhJwZ67GxUYuU70v/z./iJ.Q.lpUgg.pPN4OY8xJhZC",
-      "name": "Entregador Teste",
+      "uid": "vend_f9eebd18-97ef-434a-a814-af355e57bc2c",
+      "username": "cliente_1789549734577",
+      "email": "cliente_teste_1789549734577@vendplus.com",
+      "normalized_email": "cliente_teste_1789549734577@vendplus.com",
+      "password_hash": "$2b$10$Ad/i98WdwdfdyjCCEELRquRNSd/y0r.GFRWB1tetFbMpEKoe1A06u",
+      "name": "Cliente Teste Oficial",
       "phone": null,
       "avatar_url": null,
       "location": "Brasil",
-      "role": "DELIVERY_DRIVER",
+      "role": "USER",
       "status": "ACTIVE",
       "plan_slug": "free",
       "email_verified": false,
       "metadata": null,
-      "created_at": "2026-09-16T11:21:20.580Z",
-      "updated_at": "2026-09-16T11:21:20.580Z",
-      "id": 14,
-      "last_login_at": null,
-      "normalizedEmail": "entregador_1789557680476@teste.com"
+      "created_at": "2026-09-16T09:08:54.694Z",
+      "updated_at": "2026-09-16T09:08:54.892Z",
+      "id": 9,
+      "last_login_at": "2026-09-16T09:08:55.025Z"
     },
     {
       "uid": "vend_master_001",
@@ -1632,12 +1550,11 @@
       "avatar_url": null,
       "created_at": "2026-09-15T20:50:15.139Z",
       "updated_at": "2026-09-15T20:50:15.139Z",
-      "username": "alifergael76",
+      "username": null,
       "normalized_email": "alifergael76@gmail.com",
       "email_verified": false,
-      "last_login_at": "2026-09-16T11:22:00.546Z",
-      "metadata": null,
-      "normalizedEmail": "alifergael76@gmail.com"
+      "last_login_at": "2026-09-16T09:28:16.297Z",
+      "metadata": null
     },
     {
       "uid": "vend_admin_quick_001",
@@ -1653,12 +1570,11 @@
       "avatar_url": null,
       "created_at": "2026-09-15T20:50:15.238Z",
       "updated_at": "2026-09-15T20:50:15.238Z",
-      "username": "admin",
-      "normalized_email": "admin@vendplus.com",
+      "username": null,
+      "normalized_email": null,
       "email_verified": false,
       "last_login_at": null,
-      "metadata": null,
-      "normalizedEmail": "admin@vendplus.com"
+      "metadata": null
     },
     {
       "uid": "vend_cdc716f3-385c-4725-8d3b-3f4ffd10ccad",
@@ -1678,8 +1594,7 @@
       "created_at": "2026-09-16T11:17:53.481Z",
       "updated_at": "2026-09-16T11:17:53.481Z",
       "id": 11,
-      "last_login_at": null,
-      "normalizedEmail": "test_run_1789557473376@example.com"
+      "last_login_at": null
     },
     {
       "uid": "vend_b4bba7c5-c5c0-4efd-a3c2-56ae89c68a31",
@@ -1695,12 +1610,11 @@
       "avatar_url": null,
       "created_at": "2026-09-15T20:50:27.728Z",
       "updated_at": "2026-09-15T20:50:27.728Z",
-      "username": "carlos_ferreira",
-      "normalized_email": "carlos.ferreira@vendplus.com.br",
+      "username": null,
+      "normalized_email": null,
       "email_verified": false,
       "last_login_at": null,
-      "metadata": null,
-      "normalizedEmail": "carlos.ferreira@vendplus.com.br"
+      "metadata": null
     },
     {
       "uid": "vend_118bb708-dbc3-4d36-8601-bd30c79dfe8d",
@@ -1716,33 +1630,11 @@
       "avatar_url": null,
       "created_at": "2026-09-15T20:50:52.484Z",
       "updated_at": "2026-09-15T20:50:52.484Z",
-      "username": "mariana_souza",
-      "normalized_email": "mariana.souza@vendplus.com.br",
+      "username": null,
+      "normalized_email": null,
       "email_verified": false,
       "last_login_at": null,
-      "metadata": null,
-      "normalizedEmail": "mariana.souza@vendplus.com.br"
-    },
-    {
-      "uid": "vend_e0905ce7-d43f-4d36-8e3b-2cc45d1c1d26",
-      "email": "persist_test_1789506284054@dominio.com",
-      "password_hash": "$2b$10$baaNIkLgv.8daAiSAf5J1uuv.4FHOzspIlCr3NleqsnRcx4trqkbW",
-      "name": "Usuario Teste Persistencia",
-      "phone": null,
-      "location": "Brasil",
-      "role": "USER",
-      "status": "ACTIVE",
-      "plan_slug": "free",
-      "id": 6,
-      "avatar_url": null,
-      "created_at": "2026-09-15T21:04:44.187Z",
-      "updated_at": "2026-09-15T21:04:44.187Z",
-      "username": "persist_test_1789506284054",
-      "normalized_email": "persist_test_1789506284054@dominio.com",
-      "email_verified": false,
-      "last_login_at": null,
-      "metadata": null,
-      "normalizedEmail": "persist_test_1789506284054@dominio.com"
+      "metadata": null
     },
     {
       "uid": "vend_f901d1c6-c465-465e-9ae5-4962cfdcb1c5",
@@ -1758,12 +1650,31 @@
       "avatar_url": null,
       "created_at": "2026-09-15T20:59:30.611Z",
       "updated_at": "2026-09-15T20:59:30.611Z",
-      "username": "auditoria_1789505970482",
-      "normalized_email": "auditoria_1789505970482@teste.com",
+      "username": null,
+      "normalized_email": null,
       "email_verified": false,
       "last_login_at": null,
-      "metadata": null,
-      "normalizedEmail": "auditoria_1789505970482@teste.com"
+      "metadata": null
+    },
+    {
+      "uid": "vend_e0905ce7-d43f-4d36-8e3b-2cc45d1c1d26",
+      "email": "persist_test_1789506284054@dominio.com",
+      "password_hash": "$2b$10$baaNIkLgv.8daAiSAf5J1uuv.4FHOzspIlCr3NleqsnRcx4trqkbW",
+      "name": "Usuario Teste Persistencia",
+      "phone": null,
+      "location": "Brasil",
+      "role": "USER",
+      "status": "ACTIVE",
+      "plan_slug": "free",
+      "id": 6,
+      "avatar_url": null,
+      "created_at": "2026-09-15T21:04:44.187Z",
+      "updated_at": "2026-09-15T21:04:44.187Z",
+      "username": null,
+      "normalized_email": null,
+      "email_verified": false,
+      "last_login_at": null,
+      "metadata": null
     },
     {
       "uid": "vend_27b3966f-b903-4bbc-b9e3-6ad13d007176",
@@ -1779,12 +1690,11 @@
       "avatar_url": null,
       "created_at": "2026-09-16T08:50:18.397Z",
       "updated_at": "2026-09-16T08:50:18.397Z",
-      "username": "teste_diag",
-      "normalized_email": "teste_diag@vendplus.local",
+      "username": null,
+      "normalized_email": null,
       "email_verified": false,
       "last_login_at": null,
-      "metadata": null,
-      "normalizedEmail": "teste_diag@vendplus.local"
+      "metadata": null
     },
     {
       "uid": "vend_fce7b65f-eb02-40b3-9634-1ff16af7a588",
@@ -1804,8 +1714,7 @@
       "created_at": "2026-09-16T09:11:16.333Z",
       "updated_at": "2026-09-16T09:11:16.333Z",
       "id": 10,
-      "last_login_at": null,
-      "normalizedEmail": "alifermadeiro@hotmail.com"
+      "last_login_at": null
     },
     {
       "uid": "vend_f51add6d-152e-4c33-90ed-1b8507da5e06",
@@ -1821,75 +1730,11 @@
       "id": 8,
       "created_at": "2026-09-16T08:58:56.079Z",
       "updated_at": "2026-09-16T08:58:56.079Z",
-      "username": "teste",
-      "normalized_email": "teste@email.com",
+      "username": null,
+      "normalized_email": null,
       "email_verified": false,
       "last_login_at": null,
-      "metadata": null,
-      "normalizedEmail": "teste@email.com"
-    },
-    {
-      "uid": "vend_11b0bfee-b9df-4619-918e-03108430a585",
-      "username": "usuario_teste_1789557679987",
-      "email": "usuario_teste_1789557679987@vendplus.com.br",
-      "normalized_email": "usuario_teste_1789557679987@vendplus.com.br",
-      "password_hash": "$2b$10$S6gxe/1kNg/33VN4uwyyWOXdhXUYhgHl9LKO5I69d8gtohYbgM4Dq",
-      "name": "Usuário de Teste Automatizado",
-      "phone": null,
-      "avatar_url": null,
-      "location": "Brasil",
-      "role": "USER",
-      "status": "ACTIVE",
-      "plan_slug": "free",
-      "email_verified": false,
-      "metadata": null,
-      "created_at": "2026-09-16T11:21:20.129Z",
-      "updated_at": "2026-09-16T11:21:20.129Z",
-      "id": 12,
-      "last_login_at": null,
-      "normalizedEmail": "usuario_teste_1789557679987@vendplus.com.br"
-    },
-    {
-      "uid": "vend_b22c2710-7cf1-4be8-9498-8598113d9b0a",
-      "username": "vendedor_1789557680353",
-      "email": "vendedor_1789557680353@teste.com",
-      "normalized_email": "vendedor_1789557680353@teste.com",
-      "password_hash": "$2b$10$qnd9boFOCGoq.zMSmvSADOGZjyrvdlCHkHzZdxdY8CPBlXhH04u3O",
-      "name": "Vendedor Teste",
-      "phone": null,
-      "avatar_url": null,
-      "location": "Brasil",
-      "role": "USER",
-      "status": "ACTIVE",
-      "plan_slug": "free",
-      "email_verified": false,
-      "metadata": null,
-      "created_at": "2026-09-16T11:21:20.460Z",
-      "updated_at": "2026-09-16T11:21:20.460Z",
-      "id": 13,
-      "last_login_at": null,
-      "normalizedEmail": "vendedor_1789557680353@teste.com"
-    },
-    {
-      "uid": "vend_f9eebd18-97ef-434a-a814-af355e57bc2c",
-      "username": "cliente_1789549734577",
-      "email": "cliente_teste_1789549734577@vendplus.com",
-      "normalized_email": "cliente_teste_1789549734577@vendplus.com",
-      "password_hash": "$2b$10$Ad/i98WdwdfdyjCCEELRquRNSd/y0r.GFRWB1tetFbMpEKoe1A06u",
-      "name": "Cliente Teste Oficial",
-      "phone": null,
-      "avatar_url": null,
-      "location": "Brasil",
-      "role": "USER",
-      "status": "ACTIVE",
-      "plan_slug": "free",
-      "email_verified": false,
-      "metadata": null,
-      "created_at": "2026-09-16T09:08:54.694Z",
-      "updated_at": "2026-09-16T09:08:54.892Z",
-      "id": 9,
-      "last_login_at": "2026-09-16T09:08:55.025Z",
-      "normalizedEmail": "cliente_teste_1789549734577@vendplus.com"
+      "metadata": null
     }
   ],
   "password_resets": [
@@ -2006,36 +1851,6 @@
       "created_at": "2026-09-16T09:08:55.053Z"
     },
     {
-      "user_id": 12,
-      "event_type": "USER_CREATED",
-      "email": "usuario_teste_1789557679987@vendplus.com.br",
-      "ip_address": null,
-      "user_agent": null,
-      "metadata": "{\"username\":\"usuario_teste_1789557679987\",\"role\":\"USER\",\"name\":\"Usuário de Teste Automatizado\"}",
-      "id": 18,
-      "created_at": "2026-09-16T11:21:20.160Z"
-    },
-    {
-      "user_id": 12,
-      "event_type": "SESSION_CREATED",
-      "email": null,
-      "ip_address": "127.0.0.1",
-      "user_agent": "AutomatedTestAgent",
-      "metadata": "{\"sessionId\":\"vend_sess_318b7a1b-ebf7-4a27-acc9-ef912f28ae92\",\"expiresAt\":\"2026-10-16T11:21:20.314Z\"}",
-      "id": 21,
-      "created_at": "2026-09-16T11:21:20.328Z"
-    },
-    {
-      "user_id": 12,
-      "event_type": "SESSION_CREATED",
-      "email": null,
-      "ip_address": "127.0.0.1",
-      "user_agent": "AutomatedTestAgent",
-      "metadata": "{\"sessionId\":\"vend_sess_73240f9c-3e87-431c-b15d-1f15bdc8f9b4\",\"expiresAt\":\"2026-10-16T11:21:20.165Z\"}",
-      "id": 19,
-      "created_at": "2026-09-16T11:21:20.178Z"
-    },
-    {
       "user_id": 1,
       "event_type": "LOGIN_SUCCESS",
       "email": "alifergael76@gmail.com",
@@ -2044,36 +1859,6 @@
       "metadata": null,
       "id": 11,
       "created_at": "2026-09-16T09:09:01.074Z"
-    },
-    {
-      "user_id": 12,
-      "event_type": "SESSION_REVOKED",
-      "email": null,
-      "ip_address": null,
-      "user_agent": null,
-      "metadata": "{\"sessionId\":\"vend_sess_73240f9c-3e87-431c-b15d-1f15bdc8f9b4\"}",
-      "id": 20,
-      "created_at": "2026-09-16T11:21:20.207Z"
-    },
-    {
-      "user_id": 13,
-      "event_type": "USER_CREATED",
-      "email": "vendedor_1789557680353@teste.com",
-      "ip_address": null,
-      "user_agent": null,
-      "metadata": "{\"username\":\"vendedor_1789557680353\",\"role\":\"USER\",\"name\":\"Vendedor Teste\"}",
-      "id": 22,
-      "created_at": "2026-09-16T11:21:20.472Z"
-    },
-    {
-      "user_id": 1,
-      "event_type": "LOGIN_SUCCESS",
-      "email": "alifergael76@gmail.com",
-      "ip_address": "127.0.0.1",
-      "user_agent": "curl/7.88.1",
-      "metadata": null,
-      "id": 24,
-      "created_at": "2026-09-16T11:21:47.909Z"
     },
     {
       "user_id": 1,
@@ -2086,36 +1871,6 @@
       "created_at": "2026-09-16T09:09:01.093Z"
     },
     {
-      "user_id": 1,
-      "event_type": "SESSION_CREATED",
-      "email": null,
-      "ip_address": "127.0.0.1",
-      "user_agent": "curl/7.88.1",
-      "metadata": "{\"sessionId\":\"vend_sess_288d313a-3464-4968-9f31-a0b118f858ef\",\"expiresAt\":\"2026-10-16T11:21:47.918Z\"}",
-      "id": 25,
-      "created_at": "2026-09-16T11:21:47.950Z"
-    },
-    {
-      "user_id": 14,
-      "event_type": "USER_CREATED",
-      "email": "entregador_1789557680476@teste.com",
-      "ip_address": null,
-      "user_agent": null,
-      "metadata": "{\"username\":\"entregador_1789557680476\",\"role\":\"DELIVERY_DRIVER\",\"name\":\"Entregador Teste\"}",
-      "id": 23,
-      "created_at": "2026-09-16T11:21:20.595Z"
-    },
-    {
-      "user_id": 1,
-      "event_type": "SESSION_REVOKED",
-      "email": null,
-      "ip_address": null,
-      "user_agent": null,
-      "metadata": "{\"sessionId\":\"vend_sess_288d313a-3464-4968-9f31-a0b118f858ef\"}",
-      "id": 26,
-      "created_at": "2026-09-16T11:21:53.473Z"
-    },
-    {
       "user_id": 10,
       "event_type": "USER_CREATED",
       "email": "alifermadeiro@hotmail.com",
@@ -2124,16 +1879,6 @@
       "metadata": "{\"username\":\"gecapassi\",\"role\":\"USER\",\"name\":\"Geovana\"}",
       "id": 13,
       "created_at": "2026-09-16T09:11:16.362Z"
-    },
-    {
-      "user_id": 1,
-      "event_type": "LOGOUT",
-      "email": "alifergael76@gmail.com",
-      "ip_address": null,
-      "user_agent": null,
-      "metadata": null,
-      "id": 27,
-      "created_at": "2026-09-16T11:21:53.480Z"
     },
     {
       "user_id": 10,
@@ -2150,30 +1895,10 @@
       "event_type": "LOGIN_SUCCESS",
       "email": "alifergael76@gmail.com",
       "ip_address": "127.0.0.1",
-      "user_agent": "curl/7.88.1",
-      "metadata": null,
-      "id": 28,
-      "created_at": "2026-09-16T11:22:00.550Z"
-    },
-    {
-      "user_id": 1,
-      "event_type": "LOGIN_SUCCESS",
-      "email": "alifergael76@gmail.com",
-      "ip_address": "127.0.0.1",
       "user_agent": null,
       "metadata": null,
       "id": 15,
       "created_at": "2026-09-16T09:28:16.322Z"
-    },
-    {
-      "user_id": 1,
-      "event_type": "SESSION_CREATED",
-      "email": null,
-      "ip_address": "127.0.0.1",
-      "user_agent": "curl/7.88.1",
-      "metadata": "{\"sessionId\":\"vend_sess_ee4b8b84-8e76-49ee-aa40-658f7f21bd0d\",\"expiresAt\":\"2026-10-16T11:22:00.558Z\"}",
-      "id": 29,
-      "created_at": "2026-09-16T11:22:00.572Z"
     },
     {
       "user_id": 1,

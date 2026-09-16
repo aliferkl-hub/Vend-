@@ -217,6 +217,22 @@ router.post('/register', async (req: AuthRequest, res) => {
     });
   } catch (err: any) {
     console.error('[AUTH DATABASE ERROR] Erro no registro de conta:', err);
+    if (err.message?.includes('CONTA_JA_EXISTE') || err.message?.includes('unique constraint') || err.code === '23505') {
+      return res.status(409).json({
+        success: false,
+        code: 'EMAIL_ALREADY_EXISTS',
+        error: 'Este e-mail já possui uma conta cadastrada no VEND+. Faça login para continuar.',
+        message: 'Este e-mail já possui uma conta cadastrada no VEND+. Faça login para continuar.',
+      });
+    }
+    if (err.message?.includes('USERNAME_JA_EXISTE')) {
+      return res.status(409).json({
+        success: false,
+        code: 'USERNAME_ALREADY_EXISTS',
+        error: 'Este nome de usuário já está em uso. Escolha outro.',
+        message: 'Este nome de usuário já está em uso. Escolha outro.',
+      });
+    }
     return res.status(500).json({
       success: false,
       code: 'DATABASE_ERROR',
