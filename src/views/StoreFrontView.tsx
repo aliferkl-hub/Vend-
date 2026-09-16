@@ -20,6 +20,7 @@ import {
   Check,
 } from 'lucide-react';
 import { useCart } from '../context/CartContext.tsx';
+import { ResponsiveProductImage } from '../components/ResponsiveProductImage.tsx';
 
 interface StoreFrontViewProps {
   storeSlug: string;
@@ -296,11 +297,11 @@ export const StoreFrontView: React.FC<StoreFrontViewProps> = ({ storeSlug, onNav
                     onClick={() => setSelectedProduct(prod)}
                     className="relative aspect-square bg-slate-100 overflow-hidden cursor-pointer"
                   >
-                    <img
-                      src={prod.imageUrl}
+                    <ResponsiveProductImage
+                      product={prod}
                       alt={prod.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      referrerPolicy="no-referrer"
+                      className="group-hover:scale-105 transition-transform duration-300"
+                      containerClassName="w-full h-full"
                     />
                     <div className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md bg-white/95 text-slate-800 font-bold text-[10px] shadow-sm">
                       {prod.condition || 'NOVO'}

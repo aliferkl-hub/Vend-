@@ -1,7 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  Upload,
-  PlusCircle,
   Tag,
   DollarSign,
   MapPin,
@@ -10,64 +8,156 @@ import {
   MessageSquare,
   AlertCircle,
   CheckCircle,
-  Image as ImageIcon,
+  Briefcase,
+  Layers,
+  ArrowLeft,
+  Sparkles,
 } from 'lucide-react';
-import { Category, Product } from '../types.ts';
+import { Category, Product, ProductImage } from '../types.ts';
 import { useAuth } from '../context/AuthContext.tsx';
+import {
+  ProductImageUploader,
+  LocalProductImageItem,
+} from '../components/ProductImageUploader.tsx';
 
 interface SellViewProps {
   categories: Category[];
-  onSuccess: (newProduct: Product) => void;
-  onNavigate: (view: string) => void;
+  initialProduct?: Product | null;
+  onSuccess: (savedProduct: Product) => void;
+  onNavigate: (view: string, data?: any) => void;
 }
 
-export const SellView: React.FC<SellViewProps> = ({ categories, onSuccess, onNavigate }) => {
-  const { user } = useAuth();
+export const SellView: React.FC<SellViewProps> = ({
+  categories,
+  initialProduct = null,
+  onSuccess,
+  onNavigate,
+}) => {
+  const { user, authFetch } = useAuth();
+
+  const isEditing = Boolean(initialProduct);
 
   const [itemType, setItemType] = useState<'PRODUCT' | 'SERVICE'>('PRODUCT');
-  const [name, setName] = useState('');
-  const [categoryId, setCategoryId] = useState('');
-  const [condition, setCondition] = useState<'NOVO' | 'USADO'>('NOVO');
-  const [price, setPrice] = useState('');
-  const [originalPrice, setOriginalPrice] = useState('');
-  const [stock, setStock] = useState('1');
-  const [location, setLocation] = useState(user?.location || 'São Paulo, SP');
-  const [offersDelivery, setOffersDelivery] = useState(true);
-  const [offersPickup, setOffersPickup] = useState(true);
-  const [allowsNegotiation, setAllowsNegotiation] = useState(true);
-  const [description, setDescription] = useState('');
+  const [name, setName] = useState(initialProduct?.name || '');
+  const [categoryId, setCategoryId] = useState<string>(
+    initialProduct?.categoryId ? String(initialProduct.categoryId) : ''
+  );
+  const [subcategory, setSubcategory] = useState(initialProduct?.subcategory || '');
+  const [condition, setCondition] = useState<'NOVO' | 'USADO'>(
+    initialProduct?.condition === 'USADO' ? 'USADO' : 'NOVO'
+  );
+  const [price, setPrice] = useState(
+    initialProduct ? (initialProduct.priceCents / 100).toFixed(2).replace('.', ',') : ''
+  );
+  const [originalPrice, setOriginalPrice] = useState(
+    initialProduct?.originalPriceCents
+      ? (initialProduct.originalPriceCents / 100).toFixed(2).replace('.', ',')
+      : ''
+  );
+  const [stock, setStock] = useState(
+    initialProduct?.stock !== undefined ? String(initialProduct.stock) : '1'
+  );
+  const [location, setLocation] = useState(
+    initialProduct?.location || user?.location || 'São Paulo, SP'
+  );
+  const [offersDelivery, setOffersDelivery] = useState(
+    initialProduct ? initialProduct.offersDelivery : true
+  );
+  const [offersPickup, setOffersPickup] = useState(
+    initialProduct ? initialProduct.offersPickup : true
+  );
+  const [allowsNegotiation, setAllowsNegotiation] = useState(
+    initialProduct ? initialProduct.allowsNegotiation : true
+  );
+  const [description, setDescription] = useState(initialProduct?.description || '');
 
-  // Image Upload State
-  const [imageUrl, setImageUrl] = useState('');
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
+  // Initialize photos list (preserves existing photos when editing!)
+  const [productImages, setProductImages] = useState<LocalProductImageItem[]>(() => {
+    if (!initialProduct) return [];
+
+    const existingList: LocalProductImageItem[] = [];
+    const sourceImages = initialProduct.productImages || initialProduct.images || [];
+
+    if (sourceImages.length > 0) {
+      sourceImages.forEach((img, idx) => {
+        const url = img.url || (img as any).imageUrl;
+        if (!url) return;
+        const type = (img as any).type || (img.isPrimary ? 'main' : 'gallery');
+        existingList.push({
+          id: img.id,
+          url,
+          type: type as any,
+          position: typeof (img as any).position === 'number' ? (img as any).position : idx,
+          isPrimary: type === 'main' || img.isPrimary || idx === 0,
+        });
+      });
+    } else if (initialProduct.imageUrl) {
+      existingList.push({
+        url: initialProduct.imageUrl,
+        type: 'main',
+        position: 0,
+        isPrimary: true,
+      });
+    }
+
+    return existingList;
+  });
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // File upload handler
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Sync state if initialProduct prop changes
+  useEffect(() => {
+    if (initialProduct) {
+      setName(initialProduct.name);
+      setCategoryId(String(initialProduct.categoryId));
+      setSubcategory(initialProduct.subcategory || '');
+      setCondition(initialProduct.condition === 'USADO' ? 'USADO' : 'NOVO');
+      setPrice((initialProduct.priceCents / 100).toFixed(2).replace('.', ','));
+      setOriginalPrice(
+        initialProduct.originalPriceCents
+          ? (initialProduct.originalPriceCents / 100).toFixed(2).replace('.', ',')
+          : ''
+      );
+      setStock(String(initialProduct.stock || 1));
+      setLocation(initialProduct.location || user?.location || 'Local');
+      setOffersDelivery(initialProduct.offersDelivery);
+      setOffersPickup(initialProduct.offersPickup);
+      setAllowsNegotiation(initialProduct.allowsNegotiation);
+      setDescription(initialProduct.description);
 
-    // Check size < 5MB
-    if (file.size > 5 * 1024 * 1024) {
-      setErrorMsg('A imagem não pode ultrapassar 5MB.');
-      return;
+      const existingList: LocalProductImageItem[] = [];
+      const sourceImages = initialProduct.productImages || initialProduct.images || [];
+      if (sourceImages.length > 0) {
+        sourceImages.forEach((img, idx) => {
+          const url = img.url || (img as any).imageUrl;
+          if (!url) return;
+          const type = (img as any).type || (img.isPrimary ? 'main' : 'gallery');
+          existingList.push({
+            id: img.id,
+            url,
+            type: type as any,
+            position: typeof (img as any).position === 'number' ? (img as any).position : idx,
+            isPrimary: type === 'main' || img.isPrimary || idx === 0,
+          });
+        });
+      } else if (initialProduct.imageUrl) {
+        existingList.push({
+          url: initialProduct.imageUrl,
+          type: 'main',
+          position: 0,
+          isPrimary: true,
+        });
+      }
+      setProductImages(existingList);
     }
-
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const base64Data = reader.result as string;
-      setImagePreview(base64Data);
-      setImageUrl(base64Data);
-    };
-    reader.readAsDataURL(file);
-  };
+  }, [initialProduct]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
+    setSuccessMsg(null);
 
     if (!user) {
       setErrorMsg('Você precisa estar autenticado para anunciar.');
@@ -90,182 +180,211 @@ export const SellView: React.FC<SellViewProps> = ({ categories, onSuccess, onNav
       return;
     }
 
-    if (!imageUrl) {
-      setErrorMsg('É obrigatório adicionar ao menos 1 foto real do item.');
+    if (productImages.length === 0) {
+      setErrorMsg('É obrigatório adicionar ao menos 1 foto real do item tocando em "+ ADICIONAR FOTOS".');
       return;
     }
+
+    // Determine primary/main photo
+    const mainImg = productImages.find((img) => img.type === 'main') || productImages[0];
 
     setLoading(true);
 
     try {
-      const endpoint = itemType === 'PRODUCT' ? '/api/products' : '/api/services';
+      if (itemType === 'SERVICE' && !isEditing) {
+        const payload = {
+          name: name.trim(),
+          categoryId: parseInt(categoryId),
+          priceCents: Math.round(parsedPrice * 100),
+          priceType: 'STARTING_AT',
+          location: location.trim(),
+          offersDelivery,
+          allowsNegotiation,
+          description: description.trim(),
+          imageUrl: mainImg.url,
+        };
 
-      const payload =
-        itemType === 'PRODUCT'
-          ? {
-              name,
-              categoryId,
-              condition,
-              priceCents: Math.round(parsedPrice * 100),
-              originalPriceCents: originalPrice ? Math.round(parseFloat(originalPrice.replace(',', '.')) * 100) : null,
-              stock: parseInt(stock) || 1,
-              location,
-              offersDelivery,
-              offersPickup,
-              allowsNegotiation,
-              description,
-              imageUrl,
-            }
-          : {
-              name,
-              categoryId,
-              priceCents: Math.round(parsedPrice * 100),
-              priceType: 'STARTING_AT',
-              location,
-              offersDelivery,
-              allowsNegotiation,
-              description,
-              imageUrl,
-            };
+        const res = await authFetch('/api/services', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
 
-      const res = await fetch(endpoint, {
-        method: 'POST',
+        const data = await res.json();
+        if (!res.ok) {
+          setErrorMsg(data.error || 'Erro ao publicar serviço.');
+          setLoading(false);
+          return;
+        }
+
+        setSuccessMsg('Serviço anunciado com sucesso!');
+        setTimeout(() => {
+          onNavigate('services');
+        }, 1500);
+        return;
+      }
+
+      // PRODUCT (CREATE OR EDIT)
+      const payload = {
+        name: name.trim(),
+        categoryId: parseInt(categoryId),
+        subcategory: subcategory ? subcategory.trim() : null,
+        condition,
+        priceCents: Math.round(parsedPrice * 100),
+        originalPriceCents: originalPrice
+          ? Math.round(parseFloat(originalPrice.replace(',', '.')) * 100)
+          : null,
+        stock: Math.max(1, parseInt(stock) || 1),
+        location: location.trim(),
+        offersDelivery,
+        offersPickup,
+        allowsNegotiation,
+        description: description.trim(),
+        imageUrl: mainImg.url,
+        productImages: productImages.map((img, idx) => ({
+          id: img.id,
+          url: img.url,
+          type: img.type,
+          position: typeof img.position === 'number' ? img.position : idx,
+          isPrimary: img.type === 'main' || idx === 0,
+        })),
+      };
+
+      const url = isEditing
+        ? `/api/products/${initialProduct!.id}`
+        : '/api/products';
+      const method = isEditing ? 'PUT' : 'POST';
+
+      const res = await authFetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
       const data = await res.json();
+
       if (!res.ok) {
-        setErrorMsg(data.error || 'Erro ao publicar anúncio.');
+        setErrorMsg(data.error || 'Erro ao salvar anúncio.');
         setLoading(false);
         return;
       }
 
-      alert('Anúncio publicado com sucesso!');
-      if (itemType === 'PRODUCT' && data.product) {
-        onSuccess(data.product);
-      } else {
-        onNavigate('home');
-      }
-    } catch {
-      setErrorMsg('Erro de conexão ao salvar anúncio.');
+      const savedProd = data.product || data;
+      setSuccessMsg(
+        isEditing
+          ? 'Anúncio e fotos atualizados com sucesso!'
+          : 'Produto publicado com sucesso no VEND+!'
+      );
+
+      setTimeout(() => {
+        onSuccess(savedProd);
+      }, 1200);
+    } catch (err: any) {
+      console.error('Submit error:', err);
+      setErrorMsg('Falha de conexão com o servidor. Tente novamente.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div id="sell-view" className="max-w-3xl mx-auto space-y-6 pb-20">
-      {/* Title */}
+    <div id="sell-view-container" className="max-w-3xl mx-auto space-y-6 pb-24">
+      {/* Header */}
       <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-2xs">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2">
-              <PlusCircle className="w-6 h-6 text-emerald-500" />
-              <span>Criar Novo Anúncio</span>
-            </h1>
-            <p className="text-xs text-slate-500 mt-1">
-              Publique produtos ou serviços para milhares de clientes na sua cidade
-            </p>
+          <div className="flex items-center gap-3">
+            {isEditing && (
+              <button
+                type="button"
+                onClick={() => onNavigate('my-store')}
+                className="p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition"
+                title="Voltar"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+            )}
+            <div>
+              <h1 className="text-xl font-black text-slate-950">
+                {isEditing ? 'Editar Anúncio e Fotos' : 'Criar Novo Anúncio'}
+              </h1>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {isEditing
+                  ? `Atualize as informações e fotos de "${initialProduct?.name}"`
+                  : 'Anuncie no maior marketplace da sua região com fotos de alta qualidade'}
+              </p>
+            </div>
           </div>
 
-          {user && (
-            <div className="text-right">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                Seu Plano Atual
-              </span>
-              <span className="inline-block px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-black uppercase">
-                {user.planSlug}
-              </span>
-            </div>
-          )}
+          <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 bg-sky-50 text-sky-700 text-xs font-bold rounded-full border border-sky-100">
+            <Sparkles className="w-3.5 h-3.5" />
+            Upload Direto Ativo
+          </span>
         </div>
 
-        {/* Type toggle */}
-        <div className="mt-5 grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl">
-          <button
-            type="button"
-            onClick={() => setItemType('PRODUCT')}
-            className={`py-2 text-xs font-bold rounded-lg transition-all ${
-              itemType === 'PRODUCT'
-                ? 'bg-white text-slate-950 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Vender Produto
-          </button>
-          <button
-            type="button"
-            onClick={() => setItemType('SERVICE')}
-            className={`py-2 text-xs font-bold rounded-lg transition-all ${
-              itemType === 'SERVICE'
-                ? 'bg-white text-slate-950 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Anunciar Serviço Profissional
-          </button>
-        </div>
+        {/* Item Type Switcher (only for new listings) */}
+        {!isEditing && (
+          <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl mt-5">
+            <button
+              type="button"
+              id="select-type-product"
+              onClick={() => setItemType('PRODUCT')}
+              className={`py-2 text-xs font-bold rounded-lg transition-all ${
+                itemType === 'PRODUCT'
+                  ? 'bg-white text-slate-950 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Vender Produto Físico
+            </button>
+            <button
+              type="button"
+              id="select-type-service"
+              onClick={() => setItemType('SERVICE')}
+              className={`py-2 text-xs font-bold rounded-lg transition-all ${
+                itemType === 'SERVICE'
+                  ? 'bg-white text-slate-950 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Anunciar Serviço Profissional
+            </button>
+          </div>
+        )}
       </div>
 
+      {/* Alerts */}
       {errorMsg && (
-        <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 text-xs flex items-center gap-2.5">
+        <div
+          id="sell-error-alert"
+          className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 text-xs flex items-center gap-2.5"
+        >
           <AlertCircle className="w-5 h-5 flex-shrink-0 text-rose-600" />
           <span>{errorMsg}</span>
         </div>
       )}
 
+      {successMsg && (
+        <div
+          id="sell-success-alert"
+          className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-800 text-xs flex items-center gap-2.5"
+        >
+          <CheckCircle className="w-5 h-5 flex-shrink-0 text-emerald-600" />
+          <span>{successMsg}</span>
+        </div>
+      )}
+
       {/* Main Form */}
-      <form onSubmit={handleSubmit} className="bg-white rounded-3xl border border-slate-200 p-6 shadow-2xs space-y-5">
-        {/* Photo Upload */}
-        <div>
-          <label className="block text-xs font-black text-slate-900 uppercase tracking-wider mb-2">
-            Foto do Anúncio (Obrigatório) *
-          </label>
-          <div className="border-2 border-dashed border-slate-300 hover:border-sky-500 rounded-2xl p-6 text-center transition-colors bg-slate-50/50">
-            {imagePreview ? (
-              <div className="space-y-3">
-                <div className="aspect-video max-h-56 mx-auto rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
-                  <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setImagePreview(null);
-                    setImageUrl('');
-                  }}
-                  className="text-xs font-bold text-rose-600 hover:underline"
-                >
-                  Remover e escolher outra foto
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <div className="w-12 h-12 rounded-full bg-sky-50 text-sky-600 mx-auto flex items-center justify-center">
-                  <Upload className="w-6 h-6" />
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-slate-800">
-                    Clique para selecionar ou arraste uma foto
-                  </p>
-                  <p className="text-[11px] text-slate-500">Formatos aceitos: JPG, PNG, WEBP (Máx. 5MB)</p>
-                </div>
-                <input
-                  id="product-file-upload-input"
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  onChange={handleFileChange}
-                  className="hidden"
-                />
-                <label
-                  htmlFor="product-file-upload-input"
-                  className="inline-block cursor-pointer bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 font-bold px-4 py-2 rounded-xl text-xs shadow-xs"
-                >
-                  Selecionar do Dispositivo
-                </label>
-              </div>
-            )}
-          </div>
+      <form
+        onSubmit={handleSubmit}
+        className="bg-white rounded-3xl border border-slate-200 p-6 shadow-2xs space-y-6"
+      >
+        {/* NATIVE DEVICE PHOTO UPLOAD SYSTEM */}
+        <div className="pb-4 border-b border-slate-100">
+          <ProductImageUploader
+            images={productImages}
+            onChange={setProductImages}
+            maxImages={10}
+          />
         </div>
 
         {/* Title */}
@@ -279,8 +398,12 @@ export const SellView: React.FC<SellViewProps> = ({ categories, onSuccess, onNav
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Ex: Smartphone Samsung Galaxy S23 256GB Preto Completo"
-            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:border-sky-500 focus:bg-white"
+            placeholder={
+              itemType === 'PRODUCT'
+                ? 'Ex: iPhone 13 128GB Azul Impecável com Caixa'
+                : 'Ex: Pintura Residencial e Comercial com Acabamento Fino'
+            }
+            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:border-sky-500 focus:bg-white transition"
           />
         </div>
 
@@ -297,16 +420,16 @@ export const SellView: React.FC<SellViewProps> = ({ categories, onSuccess, onNav
               onChange={(e) => setCategoryId(e.target.value)}
               className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:border-sky-500 focus:bg-white"
             >
-              <option value="">Selecione uma categoria</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
+              <option value="">Selecione uma categoria...</option>
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
                 </option>
               ))}
             </select>
           </div>
 
-          {itemType === 'PRODUCT' && (
+          {itemType === 'PRODUCT' ? (
             <div>
               <label className="block text-xs font-bold text-slate-800 mb-1">
                 Condição do Item *
@@ -314,85 +437,121 @@ export const SellView: React.FC<SellViewProps> = ({ categories, onSuccess, onNav
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
+                  id="condition-novo-btn"
                   onClick={() => setCondition('NOVO')}
-                  className={`py-2 rounded-xl text-xs font-bold border transition-all ${
+                  className={`py-2 px-3 rounded-xl text-xs font-bold border transition ${
                     condition === 'NOVO'
-                      ? 'bg-[#0B192C] text-white border-[#0B192C]'
-                      : 'bg-slate-50 text-slate-700 border-slate-300'
+                      ? 'bg-emerald-50 border-emerald-400 text-emerald-800 shadow-2xs'
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
                 >
-                  Novo (Lacrado)
+                  Produto Novo
                 </button>
                 <button
                   type="button"
+                  id="condition-usado-btn"
                   onClick={() => setCondition('USADO')}
-                  className={`py-2 rounded-xl text-xs font-bold border transition-all ${
+                  className={`py-2 px-3 rounded-xl text-xs font-bold border transition ${
                     condition === 'USADO'
-                      ? 'bg-[#0B192C] text-white border-[#0B192C]'
-                      : 'bg-slate-50 text-slate-700 border-slate-300'
+                      ? 'bg-sky-50 border-sky-400 text-sky-800 shadow-2xs'
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
                 >
-                  Usado / Seminovo
+                  Produto Usado
                 </button>
               </div>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-xs font-bold text-slate-800 mb-1">
+                Especialidade / Subcategoria
+              </label>
+              <input
+                type="text"
+                value={subcategory}
+                onChange={(e) => setSubcategory(e.target.value)}
+                placeholder="Ex: Alvenaria, Reformas, Elétrica"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:border-sky-500 focus:bg-white"
+              />
             </div>
           )}
         </div>
 
-        {/* Price & Stock */}
+        {/* Pricing & Stock */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className="block text-xs font-bold text-slate-800 mb-1">
               Preço de Venda (R$) *
             </label>
-            <input
-              id="sell-price-input"
-              type="number"
-              step="0.01"
-              required
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-              placeholder="0,00"
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-black text-slate-900 focus:outline-none focus:border-sky-500 focus:bg-white"
-            />
+            <div className="relative">
+              <span className="absolute left-3.5 top-2.5 text-xs font-bold text-slate-400">
+                R$
+              </span>
+              <input
+                id="sell-price-input"
+                type="text"
+                required
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder="0,00"
+                className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-black text-slate-900 focus:outline-none focus:border-sky-500 focus:bg-white"
+              />
+            </div>
           </div>
 
-          {itemType === 'PRODUCT' && (
-            <>
-              <div>
-                <label className="block text-xs font-bold text-slate-800 mb-1">
-                  Preço Original (opcional)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={originalPrice}
-                  onChange={(e) => setOriginalPrice(e.target.value)}
-                  placeholder="0,00"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:border-sky-500 focus:bg-white"
-                />
-              </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-800 mb-1">
+              Preço Original / De (R$)
+            </label>
+            <div className="relative">
+              <span className="absolute left-3.5 top-2.5 text-xs font-bold text-slate-400">
+                R$
+              </span>
+              <input
+                id="sell-original-price-input"
+                type="text"
+                value={originalPrice}
+                onChange={(e) => setOriginalPrice(e.target.value)}
+                placeholder="Opcional"
+                className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:border-sky-500 focus:bg-white"
+              />
+            </div>
+          </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-800 mb-1">
-                  Estoque Disponível
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={stock}
-                  onChange={(e) => setStock(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:border-sky-500 focus:bg-white"
-                />
-              </div>
-            </>
+          {itemType === 'PRODUCT' ? (
+            <div>
+              <label className="block text-xs font-bold text-slate-800 mb-1">
+                Quantidade em Estoque *
+              </label>
+              <input
+                id="sell-stock-input"
+                type="number"
+                min="1"
+                required
+                value={stock}
+                onChange={(e) => setStock(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:border-sky-500 focus:bg-white"
+              />
+            </div>
+          ) : (
+            <div>
+              <label className="block text-xs font-bold text-slate-800 mb-1">
+                Tipo de Cobrança
+              </label>
+              <input
+                type="text"
+                readOnly
+                value="A partir de (Orçamento)"
+                className="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600"
+              />
+            </div>
           )}
         </div>
 
         {/* Location */}
         <div>
           <label className="block text-xs font-bold text-slate-800 mb-1">
-            Localização / Cidade / Bairro *
+            Localização / Bairro do Vendedor *
           </label>
           <input
             id="sell-location-input"
@@ -465,10 +624,18 @@ export const SellView: React.FC<SellViewProps> = ({ categories, onSuccess, onNav
             id="submit-sell-btn"
             type="submit"
             disabled={loading}
-            className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-sm shadow-md transition-all active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2"
+            className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-sm shadow-md transition-all active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
           >
             <CheckCircle className="w-5 h-5" />
-            <span>{loading ? 'Publicando Anúncio...' : 'Publicar Anúncio no VEND+'}</span>
+            <span>
+              {loading
+                ? isEditing
+                  ? 'Salvando Alterações...'
+                  : 'Publicando Anúncio...'
+                : isEditing
+                ? 'Salvar Alterações no Anúncio'
+                : 'Publicar Anúncio no VEND+'}
+            </span>
           </button>
         </div>
       </form>

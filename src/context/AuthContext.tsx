@@ -2,11 +2,14 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { User } from '../types.ts';
 import { auth, googleAuthProvider } from '../lib/firebase.ts';
 import { signInWithPopup, signOut as firebaseSignOut } from 'firebase/auth';
+import { normalizeEmail } from '../utils/normalizeEmail.ts';
 
 interface RegisterData {
   name: string;
+  username?: string;
   email: string;
   password: string;
+  confirmPassword?: string;
   phone?: string;
   location?: string;
   role?: string;
@@ -16,14 +19,17 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   token: string | null;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string; code?: string }>;
   register: (
     dataOrEmail: RegisterData | string,
     passwordArg?: string,
     nameArg?: string,
     roleArg?: string
-  ) => Promise<{ success: boolean; error?: string }>;
-  loginWithGoogle: () => Promise<{ success: boolean; error?: string }>;
+  ) => Promise<{ success: boolean; error?: string; code?: string }>;
+  forgotPassword: (email: string) => Promise<{ success: boolean; error?: string; message?: string; resetToken?: string }>;
+  resetPassword: (token: string, newPassword: string, confirmPassword?: string) => Promise<{ success: boolean; error?: string; message?: string }>;
+  changePassword: (currentPassword: string, newPassword: string, confirmPassword?: string) => Promise<{ success: boolean; error?: string; message?: string }>;
+  loginWithGoogle: () => Promise<{ success: boolean; error?: string; code?: string }>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   authFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -105,9 +111,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           localStorage.removeItem('vend_user');
           localStorage.removeItem('vend_token');
         } catch {}
+      } else if (res.status >= 500) {
+        // Server or database temporary error - DO NOT clear session or falsely show account missing!
+        console.warn('[VEND+] Erro temporário do servidor ao checar sessão; mantendo dados locais.');
       }
     } catch (err) {
-      console.warn('[VEND+] Verificação de sessão:', err);
+      console.warn('[VEND+] Verificação de sessão falhou (offline/rede):', err);
     } finally {
       setLoading(false);
     }
@@ -119,16 +128,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (email: string, password: string) => {
     try {
-      const normalizedEmail = email.trim().toLowerCase();
+      const cleanEmail = normalizeEmail(email);
+      if (!cleanEmail || !password) {
+        return {
+          success: false,
+          code: 'VALIDATION_ERROR',
+          error: 'E-mail e senha são obrigatórios.',
+        };
+      }
+
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ email: normalizedEmail, password }),
+        body: JSON.stringify({ email: cleanEmail, password }),
       });
+
       const data = await res.json().catch(() => ({}));
+
       if (!res.ok) {
-        return { success: false, error: data.error || 'Conta não encontrada. Verifique seus dados ou cadastre-se.' };
+        let errorMsg = 'Não foi possível verificar sua conta agora. Tente novamente.';
+        if (data.code === 'USER_NOT_FOUND') {
+          errorMsg = 'Conta não encontrada. Verifique o e-mail ou cadastre-se.';
+        } else if (data.code === 'INVALID_PASSWORD') {
+          errorMsg = 'Senha incorreta. Tente novamente ou redefina sua senha.';
+        } else if (data.code === 'DATABASE_ERROR') {
+          errorMsg = 'Não foi possível verificar sua conta agora. Tente novamente.';
+        } else if (data.code === 'ACCOUNT_BLOCKED') {
+          errorMsg = 'Esta conta está bloqueada. Entre em contato com o suporte.';
+        } else if (data.code === 'GOOGLE_AUTH_REQUIRED') {
+          errorMsg = 'Esta conta foi vinculada via Google. Por favor, utilize o botão "Entrar com Google".';
+        } else if (data.error) {
+          errorMsg = data.error;
+        }
+
+        return {
+          success: false,
+          code: data.code || 'UNKNOWN_ERROR',
+          error: errorMsg,
+        };
       }
 
       if (data.token) {
@@ -141,7 +179,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: 'Não foi possível conectar ao servidor. Tente novamente.' };
+      return {
+        success: false,
+        code: 'DATABASE_ERROR',
+        error: 'Não foi possível verificar sua conta agora. Tente novamente.',
+      };
     }
   };
 
@@ -155,7 +197,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       let payload: RegisterData;
       if (typeof dataOrEmail === 'string') {
         payload = {
-          email: dataOrEmail.trim().toLowerCase(),
+          email: normalizeEmail(dataOrEmail),
           password: passwordArg || '',
           name: nameArg || '',
           role: roleArg || 'BUYER',
@@ -163,7 +205,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         payload = {
           ...dataOrEmail,
-          email: (dataOrEmail.email || '').trim().toLowerCase(),
+          email: normalizeEmail(dataOrEmail.email),
         };
       }
 
@@ -173,9 +215,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         credentials: 'include',
         body: JSON.stringify(payload),
       });
+
       const data = await res.json().catch(() => ({}));
+
       if (!res.ok) {
-        return { success: false, error: data.error || 'Erro ao criar conta.' };
+        let errorMsg = 'Erro ao criar conta.';
+        if (data.code === 'EMAIL_ALREADY_EXISTS') {
+          errorMsg = 'Este e-mail já possui uma conta. Faça login.';
+        } else if (data.code === 'USERNAME_ALREADY_EXISTS') {
+          errorMsg = 'Este nome de usuário já está em uso. Escolha outro.';
+        } else if (data.code === 'DATABASE_ERROR') {
+          errorMsg = 'Não foi possível verificar sua conta agora. Tente novamente.';
+        } else if (data.error) {
+          errorMsg = data.error;
+        }
+
+        return {
+          success: false,
+          code: data.code || 'UNKNOWN_ERROR',
+          error: errorMsg,
+        };
       }
 
       if (data.token) {
@@ -188,7 +247,64 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return { success: true };
     } catch {
-      return { success: false, error: 'Não foi possível conectar ao servidor. Tente novamente.' };
+      return {
+        success: false,
+        code: 'DATABASE_ERROR',
+        error: 'Não foi possível verificar sua conta agora. Tente novamente.',
+      };
+    }
+  };
+
+  const forgotPassword = async (email: string) => {
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email: normalizeEmail(email) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        return { success: true, message: data.message, resetToken: data.resetToken };
+      }
+      return { success: false, error: data.error || 'Erro ao processar recuperação de senha.' };
+    } catch {
+      return { success: false, error: 'Erro de conexão ao solicitar recuperação.' };
+    }
+  };
+
+  const resetPassword = async (token: string, newPassword: string, confirmPassword?: string) => {
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ token, newPassword, confirmPassword }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        return { success: true, message: data.message };
+      }
+      return { success: false, error: data.error || 'Não foi possível redefinir sua senha.' };
+    } catch {
+      return { success: false, error: 'Erro de conexão ao redefinir senha.' };
+    }
+  };
+
+  const changePassword = async (currentPassword: string, newPassword: string, confirmPassword?: string) => {
+    try {
+      const res = await authFetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword, newPassword, confirmPassword }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        return { success: true, message: data.message };
+      }
+      return { success: false, error: data.error || 'Não foi possível alterar a senha.' };
+    } catch {
+      return { success: false, error: 'Erro de rede ao alterar senha.' };
     }
   };
 
@@ -257,6 +373,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         token,
         login,
         register,
+        forgotPassword,
+        resetPassword,
+        changePassword,
         loginWithGoogle,
         logout,
         refreshUser,

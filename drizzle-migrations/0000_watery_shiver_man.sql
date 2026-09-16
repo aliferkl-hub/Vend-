@@ -229,6 +229,7 @@ CREATE TABLE "product_images" (
 	"image_url" text NOT NULL,
 	"is_primary" boolean DEFAULT false NOT NULL,
 	"display_order" integer DEFAULT 0 NOT NULL,
+	"type" text DEFAULT 'gallery' NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint

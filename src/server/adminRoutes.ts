@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { db } from '../db/index.ts';
+import { db, persistDatabase } from '../db/index.ts';
 import {
   users,
   products,
@@ -196,6 +196,7 @@ router.patch('/users/:id', requireMasterOwner, async (req: AuthRequest, res) => 
     }
 
     const [updated] = await db.update(users).set(updates).where(eq(users.id, parseInt(id))).returning();
+    persistDatabase();
 
     return res.json({ message: 'Usuário atualizado com sucesso!', user: updated });
   } catch (err) {

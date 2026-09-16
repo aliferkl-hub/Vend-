@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
@@ -23,6 +24,7 @@ import favoriteRoutes from './src/server/favoriteRoutes.ts';
 import notificationRoutes from './src/server/notificationRoutes.ts';
 import addressRoutes from './src/server/addressRoutes.ts';
 import { initializeDatabaseSeed } from './src/server/seedData.ts';
+import { runAccountMigration } from './src/server/accountMigration.ts';
 
 dotenv.config();
 
@@ -32,9 +34,18 @@ async function startServer() {
   const app = express();
 
   // Basic parsers
-  app.use(express.json({ limit: '10mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+  app.use(express.json({ limit: '30mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '30mb' }));
   app.use(cookieParser());
+
+  // Persistent uploads storage directory
+  const uploadsDir = path.join(process.cwd(), 'data', 'uploads');
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+  app.use('/uploads', express.static(uploadsDir, {
+    maxAge: '7d',
+  }));
 
   // Global authentication middleware (populates req.user if session/token exists)
   app.use(authenticateUser);
@@ -78,8 +89,9 @@ async function startServer() {
   app.use('/api/notifications', notificationRoutes);
   app.use('/api/addresses', addressRoutes);
 
-  // Initialize background database seeds and master owner
+  // Initialize background database migration, seeds, and master owner
   try {
+    await runAccountMigration();
     await initializeDatabaseSeed();
   } catch (err: any) {
     console.error('Database initialization note:', err.message);

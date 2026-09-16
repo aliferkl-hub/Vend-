@@ -1,8 +1,9 @@
 // Persistent PostgreSQL database engine for VEND+ using pg-mem and atomic disk serialization
 // Guarantees durability across server restarts, container lifecycles, and rebuilds
-import { newDb, IMemoryDb } from 'pg-mem';
+import { newDb, IMemoryDb, DataType } from 'pg-mem';
 import fs from 'fs';
 import path from 'path';
+import { writeJsonAtomic } from './atomicStorage.ts';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'vend_database.json');
@@ -18,6 +19,8 @@ const TABLE_RESTORE_ORDER = [
   'profiles',
   'addresses',
   'sessions',
+  'password_resets',
+  'auth_events',
   'subscriptions',
   'stores',
   'delivery_drivers',
@@ -60,6 +63,18 @@ export class MemoryPool {
       name: 'now',
       implementation: () => new Date(),
     });
+    this.memDb.public.registerFunction({
+      name: 'trim',
+      args: [DataType.text],
+      returns: DataType.text,
+      implementation: (x: string) => (typeof x === 'string' ? x.trim() : x),
+    });
+    this.memDb.public.registerFunction({
+      name: 'lower',
+      args: [DataType.text],
+      returns: DataType.text,
+      implementation: (x: string) => (typeof x === 'string' ? x.toLowerCase() : x),
+    });
 
     // 1. Execute schema DDL from migrations
     if (fs.existsSync(DDL_FILE)) {
@@ -74,6 +89,46 @@ export class MemoryPool {
             // Ignore minor notices for duplicate constraints if already present
           }
         }
+      }
+    }
+
+    // 1b. Ensure additional VEND_AUTH_MEMORY schema extensions exist
+    const authSchemaStatements = [
+      'ALTER TABLE users ADD COLUMN IF NOT EXISTS username text;',
+      'ALTER TABLE users ADD COLUMN IF NOT EXISTS normalized_email text;',
+      'ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified boolean DEFAULT false;',
+      'ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at timestamp;',
+      'ALTER TABLE users ADD COLUMN IF NOT EXISTS metadata text;',
+      'ALTER TABLE sessions ADD COLUMN IF NOT EXISTS session_id text;',
+      'ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_used_at timestamp;',
+      'ALTER TABLE sessions ADD COLUMN IF NOT EXISTS revoked_at timestamp;',
+      `CREATE TABLE IF NOT EXISTS password_resets (
+        id serial PRIMARY KEY NOT NULL,
+        user_id integer NOT NULL,
+        token text NOT NULL,
+        token_hash text NOT NULL,
+        expires_at timestamp NOT NULL,
+        used_at timestamp,
+        ip_address text,
+        created_at timestamp DEFAULT now() NOT NULL
+      );`,
+      `CREATE TABLE IF NOT EXISTS auth_events (
+        id serial PRIMARY KEY NOT NULL,
+        user_id integer,
+        event_type text NOT NULL,
+        email text,
+        ip_address text,
+        user_agent text,
+        metadata text,
+        created_at timestamp DEFAULT now() NOT NULL
+      );`,
+    ];
+
+    for (const stmt of authSchemaStatements) {
+      try {
+        this.memDb.public.none(stmt);
+      } catch (e: any) {
+        // Safe to ignore if column or table already exists
       }
     }
 
@@ -234,21 +289,8 @@ export class MemoryPool {
         }
       }
 
-      const serialized = JSON.stringify(dump, null, 2);
-      const tmpFile = DB_FILE + '.tmp';
-
-      // 1. Write atomically to temporary file first
-      fs.writeFileSync(tmpFile, serialized, 'utf8');
-
-      // 2. If main DB_FILE exists and is valid, backup previous version
-      if (fs.existsSync(DB_FILE)) {
-        try {
-          fs.copyFileSync(DB_FILE, DB_BAK_FILE);
-        } catch {}
-      }
-
-      // 3. Atomic rename guarantees database file is never left in half-written state
-      fs.renameSync(tmpFile, DB_FILE);
+      // Atomically write database to disk with fsync and safety locking
+      writeJsonAtomic(DB_FILE, dump);
     } catch (err: any) {
       console.error('[Database] Erro ao salvar dados no disco (sync):', err.message);
     }

@@ -5,7 +5,9 @@ import { relations } from 'drizzle-orm';
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
   uid: text('uid').notNull().unique(), // Firebase Auth UID or internal UUID
+  username: text('username').unique(),
   email: text('email').notNull().unique(),
+  normalizedEmail: text('normalized_email').unique(),
   passwordHash: text('password_hash'), // For direct email/password auth
   name: text('name').notNull(),
   phone: text('phone'),
@@ -14,6 +16,9 @@ export const users = pgTable('users', {
   role: text('role').notNull().default('USER'), // 'USER' | 'MASTER_OWNER' | 'DELIVERY_DRIVER'
   status: text('status').notNull().default('ACTIVE'), // 'ACTIVE' | 'SUSPENDED' | 'BLOCKED'
   planSlug: text('plan_slug').notNull().default('free'), // 'free' | 'basico' | 'premium' | 'lendario'
+  emailVerified: boolean('email_verified').default(false).notNull(),
+  lastLoginAt: timestamp('last_login_at'),
+  metadata: text('metadata'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -21,11 +26,38 @@ export const users = pgTable('users', {
 // 2. SESSIONS
 export const sessions = pgTable('sessions', {
   id: serial('id').primaryKey(),
+  sessionId: text('session_id'),
   userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
   token: text('token').notNull().unique(),
   expiresAt: timestamp('expires_at').notNull(),
+  lastUsedAt: timestamp('last_used_at'),
+  revokedAt: timestamp('revoked_at'),
   ipAddress: text('ip_address'),
   userAgent: text('user_agent'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// 2b. PASSWORD_RESETS
+export const passwordResets = pgTable('password_resets', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  token: text('token').notNull(),
+  tokenHash: text('token_hash').notNull().unique(),
+  expiresAt: timestamp('expires_at').notNull(),
+  usedAt: timestamp('used_at'),
+  ipAddress: text('ip_address'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// 2c. AUTH_EVENTS (VEND_AUTH_MEMORY)
+export const authEvents = pgTable('auth_events', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+  eventType: text('event_type').notNull(),
+  email: text('email'),
+  ipAddress: text('ip_address'),
+  userAgent: text('user_agent'),
+  metadata: text('metadata'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -155,6 +187,7 @@ export const productImages = pgTable('product_images', {
   imageUrl: text('image_url').notNull(),
   isPrimary: boolean('is_primary').default(false).notNull(),
   displayOrder: integer('display_order').default(0).notNull(),
+  type: text('type').default('gallery').notNull(), // 'main' | 'gallery' | 'desktop' | 'tablet' | 'mobile'
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 

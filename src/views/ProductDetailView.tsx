@@ -12,6 +12,8 @@ import {
   CheckCircle,
   AlertTriangle,
   ShoppingBag,
+  ZoomIn,
+  X,
 } from 'lucide-react';
 import { Product } from '../types.ts';
 import { useCart } from '../context/CartContext.tsx';
@@ -36,7 +38,23 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
   const { addItem } = useCart();
   const { user } = useAuth();
 
-  const [activeImage, setActiveImage] = useState<string>(product.imageUrl);
+  const allImagesList = React.useMemo(() => {
+    const list: string[] = [];
+    if (product.imageUrl) list.push(product.imageUrl);
+
+    const extra = (product.productImages || product.images || []) as any[];
+    extra.forEach((img) => {
+      const u = typeof img === 'string' ? img : img.url || img.imageUrl;
+      if (u && !list.includes(u)) {
+        list.push(u);
+      }
+    });
+
+    return list.length > 0 ? list : [product.imageUrl];
+  }, [product]);
+
+  const [activeImage, setActiveImage] = useState<string>(product.imageUrl || allImagesList[0]);
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [isNegModalOpen, setIsNegModalOpen] = useState(false);
   const [addedToast, setAddedToast] = useState(false);
   const [isFavorited, setIsFavorited] = useState(false);
@@ -151,13 +169,23 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
         {/* Left column: Images (7 cols) */}
         <div className="lg:col-span-7 space-y-3">
           <div className="bg-white rounded-3xl border border-slate-200 p-4 shadow-2xs overflow-hidden">
-            <div className="aspect-square w-full rounded-2xl overflow-hidden bg-slate-100 relative">
+            <div className="aspect-square w-full rounded-2xl overflow-hidden bg-slate-100 relative flex items-center justify-center group">
               <img
                 src={activeImage}
                 alt={product.name}
-                className="w-full h-full object-cover object-center"
+                className="max-h-full max-w-full object-contain"
                 referrerPolicy="no-referrer"
               />
+
+              <button
+                type="button"
+                onClick={() => setIsLightboxOpen(true)}
+                className="absolute bottom-3 right-3 p-2 rounded-xl bg-slate-900/70 hover:bg-slate-900 text-white backdrop-blur-xs transition shadow-sm"
+                title="Ampliar foto"
+              >
+                <ZoomIn className="w-4 h-4" />
+              </button>
+
               <div className="absolute top-3 left-3 flex flex-col gap-1.5 z-10">
                 <span
                   className={`px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider ${
@@ -178,17 +206,17 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
           </div>
 
           {/* Additional thumbnails if available */}
-          {product.images && product.images.length > 1 && (
+          {allImagesList.length > 1 && (
             <div className="flex items-center gap-2 overflow-x-auto pb-2">
-              {product.images.map((img, i) => (
+              {allImagesList.map((imgUrl, i) => (
                 <button
                   key={i}
-                  onClick={() => setActiveImage(img.imageUrl)}
-                  className={`w-16 h-16 rounded-xl overflow-hidden border-2 flex-shrink-0 ${
-                    activeImage === img.imageUrl ? 'border-sky-500' : 'border-slate-200 opacity-70'
+                  onClick={() => setActiveImage(imgUrl)}
+                  className={`w-16 h-16 rounded-xl overflow-hidden border-2 flex-shrink-0 bg-slate-50 flex items-center justify-center transition ${
+                    activeImage === imgUrl ? 'border-sky-500 ring-2 ring-sky-200' : 'border-slate-200 opacity-70 hover:opacity-100'
                   }`}
                 >
-                  <img src={img.imageUrl} alt="" className="w-full h-full object-cover" />
+                  <img src={imgUrl} alt="" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
                 </button>
               ))}
             </div>
@@ -426,6 +454,32 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
         onClose={() => setIsNegModalOpen(false)}
         onSubmitOffer={handleStartOffer}
       />
+
+      {/* Lightbox Zoom Modal */}
+      {isLightboxOpen && (
+        <div
+          id="product-detail-lightbox"
+          onClick={() => setIsLightboxOpen(false)}
+          className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex items-center justify-center p-4 cursor-zoom-out"
+        >
+          <div className="relative max-w-4xl max-h-[90vh] w-full flex flex-col items-center">
+            <button
+              type="button"
+              onClick={() => setIsLightboxOpen(false)}
+              className="absolute -top-10 right-0 text-white hover:text-slate-300 p-2 rounded-full bg-white/10"
+              title="Fechar"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <img
+              src={activeImage}
+              alt={product.name}
+              className="max-h-[85vh] max-w-full object-contain rounded-xl shadow-2xl"
+              referrerPolicy="no-referrer"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

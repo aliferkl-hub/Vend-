@@ -55,6 +55,7 @@ const MainApp: React.FC = () => {
 
   // Selected item states
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [selectedService, setSelectedService] = useState<ServiceItem | null>(null);
   const [checkoutNegotiation, setCheckoutNegotiation] = useState<Negotiation | null>(null);
 
@@ -98,13 +99,20 @@ const MainApp: React.FC = () => {
   }, []);
 
   // Handlers
-  const handleNavigate = (view: string, param?: string) => {
+  const handleNavigate = (view: string, param?: any) => {
     setCurrentView(view);
-    if (view === 'search' && param) {
+    if (view === 'search' && typeof param === 'string') {
       setSearchQuery(param);
     }
-    if (view === 'store-front' && param) {
+    if (view === 'store-front' && typeof param === 'string') {
       setStoreSlug(param);
+    }
+    if (view === 'sell') {
+      if (param && typeof param === 'object') {
+        setEditingProduct(param);
+      } else {
+        setEditingProduct(null);
+      }
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -221,8 +229,10 @@ const MainApp: React.FC = () => {
         {currentView === 'sell' && (
           <SellView
             categories={categories}
-            onSuccess={(newProduct) => {
-              setSelectedProduct(newProduct);
+            initialProduct={editingProduct}
+            onSuccess={(savedProduct) => {
+              setSelectedProduct(savedProduct);
+              setEditingProduct(null);
               setCurrentView('product-detail');
               fetchInitialData();
             }}

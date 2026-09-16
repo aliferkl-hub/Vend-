@@ -404,7 +404,7 @@ export const MyStoreView: React.FC<MyStoreViewProps> = ({ onNavigate }) => {
 
                 <button
                   id="btn-add-product"
-                  onClick={() => setShowAddProductModal(true)}
+                  onClick={() => onNavigate('sell')}
                   className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-sm"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -481,13 +481,22 @@ export const MyStoreView: React.FC<MyStoreViewProps> = ({ onNavigate }) => {
                               </span>
                             </td>
                             <td className="p-3.5 text-right">
-                              <button
-                                onClick={() => handleDeleteProduct(p.id)}
-                                className="p-1 text-slate-400 hover:text-rose-600 transition"
-                                title="Remover produto da loja"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  onClick={() => onNavigate('sell', p)}
+                                  className="p-1.5 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition"
+                                  title="Editar anúncio e fotos"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteProduct(p.id)}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                                  title="Remover produto da loja"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );

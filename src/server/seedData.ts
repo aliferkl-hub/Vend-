@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { db, persistDatabase } from '../db/index.ts';
 import { users, profiles, categories, plans, products, services, stores } from '../db/schema.ts';
 import { eq, count } from 'drizzle-orm';
+import { UserRepository } from './repositories/UserRepository.ts';
 
 export async function initializeDatabaseSeed() {
   try {
@@ -75,47 +76,14 @@ export async function initializeDatabaseSeed() {
       console.log('[VEND+] Planos padrão inseridos.');
     }
 
-    // 1. Check & ensure Master Owner
+    // 1. Check & ensure Master Owner via official ensureMasterOwner()
+    await UserRepository.ensureMasterOwner();
+
     const masterEmail = (process.env.MASTER_OWNER_EMAIL || 'alifergael76@gmail.com').trim().toLowerCase();
     const existingMaster = await db.select().from(users).where(eq(users.email, masterEmail)).limit(1);
+    let masterUserId: number = existingMaster[0]?.id || 1;
 
-    let masterUserId: number;
-
-    if (existingMaster.length === 0) {
-      const salt = await bcrypt.genSalt(10);
-      const passwordHash = await bcrypt.hash('VendMais@2026', salt);
-
-      const [mUser] = await db
-        .insert(users)
-        .values({
-          uid: 'vend_master_001',
-          email: masterEmail,
-          passwordHash,
-          name: 'Master Owner VEND+',
-          phone: '(11) 99999-0000',
-          location: 'São Paulo, SP',
-          role: 'MASTER_OWNER',
-          status: 'ACTIVE',
-          planSlug: 'lendario',
-        })
-        .returning();
-
-      masterUserId = mUser.id;
-
-      await db.insert(profiles).values({
-        userId: mUser.id,
-        bio: 'Administrador e Gestor Geral da Plataforma VEND+',
-      });
-      console.log(`[VEND+] Master Owner inicial criado: ${masterEmail}`);
-    } else {
-      masterUserId = existingMaster[0].id;
-      // Ensure role is MASTER_OWNER
-      if (existingMaster[0].role !== 'MASTER_OWNER') {
-        await db.update(users).set({ role: 'MASTER_OWNER' }).where(eq(users.id, masterUserId));
-      }
-    }
-
-    // Ensure quick-access admin account exists if different from masterEmail
+    // Ensure secondary administrator account exists without duplication
     const quickAdminEmail = 'admin@vendplus.com';
     if (masterEmail !== quickAdminEmail) {
       const existingQuickAdmin = await db.select().from(users).where(eq(users.email, quickAdminEmail)).limit(1);
@@ -126,7 +94,9 @@ export async function initializeDatabaseSeed() {
           .insert(users)
           .values({
             uid: 'vend_admin_quick_001',
+            username: 'admin',
             email: quickAdminEmail,
+            normalizedEmail: quickAdminEmail,
             passwordHash,
             name: 'Administrador VEND+',
             phone: '(11) 98888-0000',
@@ -134,12 +104,17 @@ export async function initializeDatabaseSeed() {
             role: 'MASTER_OWNER',
             status: 'ACTIVE',
             planSlug: 'lendario',
+            emailVerified: true,
           })
           .returning();
         await db.insert(profiles).values({
           userId: qUser.id,
           bio: 'Conta de Demonstração Administrativa VEND+',
         });
+      } else {
+        if (existingQuickAdmin[0].role !== 'MASTER_OWNER') {
+          await db.update(users).set({ role: 'MASTER_OWNER' }).where(eq(users.id, existingQuickAdmin[0].id));
+        }
       }
     }
 

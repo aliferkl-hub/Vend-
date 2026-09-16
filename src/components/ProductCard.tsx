@@ -1,6 +1,7 @@
 import React from 'react';
 import { MapPin, Truck, MessageSquare, Heart, ShieldCheck } from 'lucide-react';
 import { Product } from '../types.ts';
+import { ResponsiveProductImage } from './ResponsiveProductImage.tsx';
 
 interface ProductCardProps {
   product: Product;
@@ -35,12 +36,11 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     >
       {/* Image container */}
       <div className="relative aspect-square w-full bg-slate-100 overflow-hidden">
-        <img
-          src={product.imageUrl}
+        <ResponsiveProductImage
+          product={product}
           alt={product.name}
-          className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300"
-          loading="lazy"
-          referrerPolicy="no-referrer"
+          className="group-hover:scale-105 transition-transform duration-300"
+          containerClassName="w-full h-full"
         />
 
         {/* Favorite Button */}

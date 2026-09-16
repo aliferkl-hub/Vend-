@@ -60,6 +60,14 @@ export async function ensurePostgresSchema(pool: Pool): Promise<void> {
         console.warn('[PostgresSync] Aviso na instrução DDL:', err.message);
       }
     }
+
+    // Ensure backwards-compatible columns exist
+    try {
+      await pool.query(`ALTER TABLE "product_images" ADD COLUMN IF NOT EXISTS "type" text DEFAULT 'gallery' NOT NULL;`);
+    } catch {
+      // ignore
+    }
+
     console.log('[PostgresSync] Estrutura DDL no PostgreSQL verificada com sucesso.');
   } catch (err: any) {
     console.error('[PostgresSync] Erro ao aplicar DDL no PostgreSQL:', err.message);

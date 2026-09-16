@@ -1,8 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import { adminAuth } from '../lib/firebase-admin.ts';
 import { db } from '../db/index.ts';
-import { users, sessions } from '../db/schema.ts';
-import { eq, and, gt } from 'drizzle-orm';
+import { users } from '../db/schema.ts';
+import { eq } from 'drizzle-orm';
+import { UserRepository } from '../server/repositories/UserRepository.ts';
+import { normalizeEmail } from '../utils/normalizeEmail.ts';
 
 export interface AuthenticatedUser {
   id: number;
@@ -44,33 +46,24 @@ export const authenticateUser = async (
       return next();
     }
 
-    // A. First check internal PostgreSQL sessions
-    const validSession = await db
-      .select({
-        session: sessions,
-        user: users,
-      })
-      .from(sessions)
-      .innerJoin(users, eq(sessions.userId, users.id))
-      .where(and(eq(sessions.token, token), gt(sessions.expiresAt, new Date())))
-      .limit(1);
+    // A. First check internal database sessions via UserRepository
+    const sessionUser = await UserRepository.validateSession(token);
 
-    if (validSession.length > 0) {
-      const u = validSession[0].user;
-      if (u.status === 'BLOCKED') {
+    if (sessionUser) {
+      if (sessionUser.status === 'BLOCKED') {
         return res.status(403).json({ error: 'Conta bloqueada por motivos de segurança. Contate o suporte.' });
       }
       req.user = {
-        id: u.id,
-        uid: u.uid,
-        email: u.email,
-        name: u.name,
-        role: u.role,
-        status: u.status,
-        planSlug: u.planSlug,
-        phone: u.phone,
-        avatarUrl: u.avatarUrl,
-        location: u.location,
+        id: sessionUser.id,
+        uid: sessionUser.uid,
+        email: sessionUser.email,
+        name: sessionUser.name,
+        role: sessionUser.role,
+        status: sessionUser.status,
+        planSlug: sessionUser.planSlug,
+        phone: sessionUser.phone,
+        avatarUrl: sessionUser.avatarUrl,
+        location: sessionUser.location,
       };
       return next();
     }
@@ -159,6 +152,18 @@ export const requireMasterOwner = (
     return res.status(403).json({ error: 'Acesso restrito ao Master Owner da plataforma.' });
   }
   next();
+};
+
+export const requireRole = (role: string) => {
+  return (req: AuthRequest, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Não autorizado. Faça login.' });
+    }
+    if (req.user.role !== role && req.user.role !== 'MASTER_OWNER') {
+      return res.status(403).json({ error: `Acesso restrito ao perfil ${role}.` });
+    }
+    next();
+  };
 };
 
 export const requireDriver = (

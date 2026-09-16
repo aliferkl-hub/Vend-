@@ -25,6 +25,20 @@ export interface Category {
   isActive: boolean;
 }
 
+export type ProductImageType = 'main' | 'gallery' | 'desktop' | 'tablet' | 'mobile';
+
+export interface ProductImage {
+  id?: number;
+  productId?: number;
+  url: string;
+  imageUrl?: string;
+  type: ProductImageType;
+  position: number;
+  displayOrder?: number;
+  isPrimary?: boolean;
+  createdAt?: string;
+}
+
 export interface Product {
   id: number;
   storeId?: number | null;
@@ -57,7 +71,18 @@ export interface Product {
     phone?: string | null;
     planSlug?: string;
   };
-  images?: Array<{ imageUrl: string; isPrimary: boolean }>;
+  images?: Array<{
+    id?: number;
+    productId?: number;
+    imageUrl: string;
+    url?: string;
+    isPrimary: boolean;
+    type?: ProductImageType;
+    position?: number;
+    displayOrder?: number;
+    createdAt?: string;
+  }>;
+  productImages?: ProductImage[];
   store?: any;
 }
 
