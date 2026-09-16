@@ -33,11 +33,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     try {
       if (tab === 'LOGIN') {
-        const res = await login(email, password);
+        const res = await login(email.trim(), password);
         if (res.success) {
           onClose();
         } else {
-          setErrorMsg(res.error || 'Credenciais inválidas.');
+          setErrorMsg(res.error || 'Conta não encontrada. Verifique seus dados ou cadastre-se.');
         }
       } else {
         if (!name.trim()) {
@@ -45,7 +45,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           setLoading(false);
           return;
         }
-        const res = await register(email, password, name, role);
+        const res = await register({
+          name: name.trim(),
+          email: email.trim(),
+          password,
+          role,
+        });
         if (res.success) {
           onClose();
         } else {
@@ -53,7 +58,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         }
       }
     } catch {
-      setErrorMsg('Erro de conexão.');
+      setErrorMsg('Não foi possível conectar ao servidor. Tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -191,10 +196,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               id="auth-email-input"
               type="email"
               required
+              disabled={loading}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="seu@email.com"
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:border-sky-500"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:border-sky-500 disabled:opacity-60"
             />
           </div>
 
@@ -204,10 +210,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               id="auth-password-input"
               type="password"
               required
+              disabled={loading}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:border-sky-500"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:border-sky-500 disabled:opacity-60"
             />
           </div>
 
@@ -215,7 +222,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             id="auth-submit-btn"
             type="submit"
             disabled={loading}
-            className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs shadow-md transition-all active:scale-[0.99] disabled:opacity-50"
+            className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs shadow-md transition-all active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? 'Processando...' : tab === 'LOGIN' ? 'Entrar no VEND+' : 'Criar Conta'}
           </button>
@@ -226,12 +233,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <button
             id="auth-google-btn"
             type="button"
+            disabled={loading}
             onClick={async () => {
-              const res = await loginWithGoogle();
-              if (res.success) onClose();
-              else if (res.error) setErrorMsg(res.error);
+              if (loading) return;
+              setErrorMsg(null);
+              setLoading(true);
+              try {
+                const res = await loginWithGoogle();
+                if (res.success) onClose();
+                else if (res.error) setErrorMsg(res.error);
+              } finally {
+                setLoading(false);
+              }
             }}
-            className="w-full py-2.5 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 flex items-center justify-center gap-2"
+            className="w-full py-2.5 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <span>Continuar com Google</span>
           </button>
@@ -239,8 +254,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <button
             id="auth-master-quick-btn"
             type="button"
+            disabled={loading}
             onClick={handleQuickMasterLogin}
-            className="w-full py-2 text-[11px] font-bold text-purple-700 hover:bg-purple-50 rounded-xl transition-colors border border-purple-200"
+            className="w-full py-2 text-[11px] font-bold text-purple-700 hover:bg-purple-50 rounded-xl transition-colors border border-purple-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             ⚡ Acesso Rápido Master Owner (Admin)
           </button>

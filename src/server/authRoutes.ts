@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { db } from '../db/index.ts';
+import { db, persistDatabase, detectStorageStatus } from '../db/index.ts';
 import { users, sessions, profiles, auditLogs } from '../db/schema.ts';
 import { eq } from 'drizzle-orm';
 import { AuthRequest } from '../middleware/auth.ts';
@@ -9,6 +9,10 @@ import { AuthRequest } from '../middleware/auth.ts';
 const router = Router();
 
 const SESSION_EXPIRY_DAYS = 30;
+
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
 
 function setSessionCookie(res: Response, token: string) {
   res.cookie('vend_session', token, {
@@ -36,11 +40,16 @@ router.post('/register', async (req: AuthRequest, res) => {
     // Normalize email: trim and lowercase
     const normalizedEmail = email.trim().toLowerCase();
 
+    if (!isValidEmail(normalizedEmail)) {
+      return res.status(400).json({ error: 'Formato de e-mail inválido. Verifique e tente novamente.' });
+    }
+
     // Check if email already exists
     const existing = await db.select().from(users).where(eq(users.email, normalizedEmail)).limit(1);
     if (existing.length > 0) {
       return res.status(400).json({
-        error: 'Este email já está cadastrado. Faça login ou recupere sua senha.',
+        error: 'Este e-mail já está cadastrado. Faça login.',
+        message: 'Este e-mail já está cadastrado. Faça login.',
       });
     }
 
@@ -101,6 +110,9 @@ router.post('/register', async (req: AuthRequest, res) => {
       userAgent: req.headers['user-agent'],
     });
 
+    // Explicitly guarantee persistence immediately
+    persistDatabase();
+
     return res.status(201).json({
       message: 'Conta criada com sucesso!',
       token,
@@ -135,7 +147,7 @@ router.post('/login', async (req: AuthRequest, res) => {
 
     const result = await db.select().from(users).where(eq(users.email, normalizedEmail)).limit(1);
     if (result.length === 0) {
-      return res.status(401).json({ error: 'E-mail ou senha incorretos.' });
+      return res.status(401).json({ error: 'Conta não encontrada. Verifique seus dados ou cadastre-se.' });
     }
 
     const user = result[0];
@@ -152,7 +164,7 @@ router.post('/login', async (req: AuthRequest, res) => {
 
     const isMatch = await bcrypt.compare(password, user.passwordHash);
     if (!isMatch) {
-      return res.status(401).json({ error: 'E-mail ou senha incorretos.' });
+      return res.status(401).json({ error: 'Senha incorreta.' });
     }
 
     // Create session
@@ -180,6 +192,9 @@ router.post('/login', async (req: AuthRequest, res) => {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
     });
+
+    // Ensure session is persisted to disk immediately
+    persistDatabase();
 
     return res.json({
       message: 'Login realizado com sucesso!',
@@ -227,6 +242,9 @@ router.post('/logout', async (req: AuthRequest, res) => {
       });
     }
 
+    // Ensure session deletion is immediately persisted to disk
+    persistDatabase();
+
     return res.json({ message: 'Sessão encerrada com sucesso.' });
   } catch (err) {
     console.error('Logout error:', err);
@@ -237,20 +255,39 @@ router.post('/logout', async (req: AuthRequest, res) => {
 // 4. ME (current session check)
 router.get('/me', async (req: AuthRequest, res) => {
   if (!req.user) {
-    return res.status(401).json({ authenticated: false, user: null });
+    return res.status(401).json({ authenticated: false, user: null, error: 'Sessão não encontrada ou expirada.' });
   }
 
-  // Fetch full details
+  // Fetch full and fresh details from database
+  const [freshUser] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, req.user.id))
+    .limit(1);
+
+  if (!freshUser || freshUser.status === 'BLOCKED') {
+    return res.status(401).json({ authenticated: false, user: null, error: 'Usuário não encontrado ou inativo.' });
+  }
+
   const [userProfile] = await db
     .select()
     .from(profiles)
-    .where(eq(profiles.userId, req.user.id))
+    .where(eq(profiles.userId, freshUser.id))
     .limit(1);
 
   return res.json({
     authenticated: true,
     user: {
-      ...req.user,
+      id: freshUser.id,
+      uid: freshUser.uid,
+      email: freshUser.email,
+      name: freshUser.name,
+      role: freshUser.role,
+      status: freshUser.status,
+      planSlug: freshUser.planSlug,
+      phone: freshUser.phone,
+      avatarUrl: freshUser.avatarUrl,
+      location: freshUser.location,
       profile: userProfile || null,
     },
   });
@@ -286,6 +323,12 @@ router.post('/recover-password', async (req: AuthRequest, res) => {
     console.error('Password recovery error:', err);
     return res.status(500).json({ error: 'Erro ao processar recuperação de senha.' });
   }
+});
+
+// 6. STORAGE & PERSISTENCE DIAGNOSTICS
+router.get('/storage-status', (req, res) => {
+  const status = detectStorageStatus();
+  return res.json(status);
 });
 
 export default router;

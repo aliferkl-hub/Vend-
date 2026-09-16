@@ -3,12 +3,26 @@ import { User } from '../types.ts';
 import { auth, googleAuthProvider } from '../lib/firebase.ts';
 import { signInWithPopup, signOut as firebaseSignOut } from 'firebase/auth';
 
+interface RegisterData {
+  name: string;
+  email: string;
+  password: string;
+  phone?: string;
+  location?: string;
+  role?: string;
+}
+
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   token: string | null;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  register: (data: { name: string; email: string; password: string; phone?: string; location?: string }) => Promise<{ success: boolean; error?: string }>;
+  register: (
+    dataOrEmail: RegisterData | string,
+    passwordArg?: string,
+    nameArg?: string,
+    roleArg?: string
+  ) => Promise<{ success: boolean; error?: string }>;
   loginWithGoogle: () => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -76,17 +90,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             localStorage.setItem('vend_user', JSON.stringify(data.user));
           } catch {}
         } else {
-          // If server rejected both cookie and token
-          if (!currentToken) {
-            setUser(null);
-            try {
-              localStorage.removeItem('vend_user');
-            } catch {}
-          }
+          setUser(null);
+          setToken(null);
+          try {
+            localStorage.removeItem('vend_user');
+            localStorage.removeItem('vend_token');
+          } catch {}
         }
+      } else if (res.status === 401) {
+        // Backend invalidated or session expired - clear client session state
+        setUser(null);
+        setToken(null);
+        try {
+          localStorage.removeItem('vend_user');
+          localStorage.removeItem('vend_token');
+        } catch {}
       }
     } catch (err) {
-      console.warn('Network issue checking user session:', err);
+      console.warn('[VEND+] Verificação de sessão:', err);
     } finally {
       setLoading(false);
     }
@@ -105,9 +126,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         credentials: 'include',
         body: JSON.stringify({ email: normalizedEmail, password }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        return { success: false, error: data.error || 'Falha ao realizar login.' };
+        return { success: false, error: data.error || 'Conta não encontrada. Verifique seus dados ou cadastre-se.' };
       }
 
       if (data.token) {
@@ -120,31 +141,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: 'Erro de conexão com o servidor.' };
+      return { success: false, error: 'Não foi possível conectar ao servidor. Tente novamente.' };
     }
   };
 
-  const register = async (userData: {
-    name: string;
-    email: string;
-    password: string;
-    phone?: string;
-    location?: string;
-  }) => {
+  const register = async (
+    dataOrEmail: RegisterData | string,
+    passwordArg?: string,
+    nameArg?: string,
+    roleArg?: string
+  ) => {
     try {
-      const normalizedEmail = userData.email.trim().toLowerCase();
+      let payload: RegisterData;
+      if (typeof dataOrEmail === 'string') {
+        payload = {
+          email: dataOrEmail.trim().toLowerCase(),
+          password: passwordArg || '',
+          name: nameArg || '',
+          role: roleArg || 'BUYER',
+        };
+      } else {
+        payload = {
+          ...dataOrEmail,
+          email: (dataOrEmail.email || '').trim().toLowerCase(),
+        };
+      }
+
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          ...userData,
-          email: normalizedEmail,
-        }),
+        body: JSON.stringify(payload),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        return { success: false, error: data.error || 'Falha no cadastro.' };
+        return { success: false, error: data.error || 'Erro ao criar conta.' };
       }
 
       if (data.token) {
@@ -157,7 +188,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return { success: true };
     } catch {
-      return { success: false, error: 'Erro de conexão ao criar conta.' };
+      return { success: false, error: 'Não foi possível conectar ao servidor. Tente novamente.' };
     }
   };
 

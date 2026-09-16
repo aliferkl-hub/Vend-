@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
 
 import { authenticateUser } from './src/middleware/auth.ts';
+import { detectStorageStatus } from './src/db/index.ts';
 import authRoutes from './src/server/authRoutes.ts';
 import productRoutes from './src/server/productRoutes.ts';
 import serviceRoutes from './src/server/serviceRoutes.ts';
@@ -40,11 +41,23 @@ async function startServer() {
 
   // Health check
   app.get('/api/health', (req, res) => {
+    const storage = detectStorageStatus();
     res.json({
       status: 'ok',
       service: 'VEND+ Marketplace API',
       timestamp: new Date().toISOString(),
+      storage: {
+        mechanism: storage.mechanism,
+        engine: storage.engine,
+        isEphemeralEnvironment: storage.isEphemeralEnvironment,
+        statement: storage.statement,
+      },
     });
+  });
+
+  // Storage status diagnostics
+  app.get('/api/system/storage-status', (req, res) => {
+    res.json(detectStorageStatus());
   });
 
   // API Routes
@@ -66,9 +79,11 @@ async function startServer() {
   app.use('/api/addresses', addressRoutes);
 
   // Initialize background database seeds and master owner
-  initializeDatabaseSeed().catch((err) => {
+  try {
+    await initializeDatabaseSeed();
+  } catch (err: any) {
     console.error('Database initialization note:', err.message);
-  });
+  }
 
   // Vite middleware for development vs static production serving
   if (process.env.NODE_ENV !== 'production') {
