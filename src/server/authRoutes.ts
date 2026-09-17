@@ -257,10 +257,13 @@ router.post('/login', async (req: AuthRequest, res) => {
     }
 
     console.log(`[AUTH USER LOOKUP] Buscando conta persistente para: ${cleanEmail}`);
-    const user = await UserRepository.findByEmail(cleanEmail);
+    let user = await UserRepository.findByEmail(cleanEmail);
+    if (!user) {
+      user = await UserRepository.findByUsername(cleanEmail);
+    }
 
     if (!user) {
-      console.log(`[AUTH USER NOT FOUND] Conta inexistente para email: ${cleanEmail}`);
+      console.log(`[AUTH USER NOT FOUND] Conta inexistente para identificador: ${cleanEmail}`);
       recordFailedAttempt(rateLimitKey);
       await UserRepository.recordLoginFailure(cleanEmail, 'USER_NOT_FOUND', req.ip, req.headers['user-agent']);
 
@@ -283,7 +286,8 @@ router.post('/login', async (req: AuthRequest, res) => {
       });
     }
 
-    if (!user.passwordHash) {
+    const userPasswordHash = user.passwordHash || (user as any).password_hash;
+    if (!userPasswordHash) {
       return res.status(400).json({
         success: false,
         code: 'GOOGLE_AUTH_REQUIRED',
@@ -293,7 +297,7 @@ router.post('/login', async (req: AuthRequest, res) => {
     }
 
     console.log(`[AUTH PASSWORD CHECK] Verificando credenciais para id ${user.id}...`);
-    const isMatch = await UserRepository.verifyPassword(password, user.passwordHash);
+    const isMatch = await UserRepository.verifyPassword(password, userPasswordHash);
 
     if (!isMatch) {
       recordFailedAttempt(rateLimitKey);
