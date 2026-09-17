@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
-let lastKnownPostgresReachable = false;
+let lastKnownPostgresReachable = Boolean(process.env.SQL_HOST || process.env.DATABASE_URL);
 
 export function setPostgresReachable(reachable: boolean): void {
   lastKnownPostgresReachable = reachable;

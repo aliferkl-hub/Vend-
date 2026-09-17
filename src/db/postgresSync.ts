@@ -30,47 +30,13 @@ const TABLES_ORDER = [
 ];
 
 export async function ensurePostgresSchema(pool: Pool): Promise<void> {
-  const ddlPath = path.join(process.cwd(), 'drizzle-migrations/0000_watery_shiver_man.sql');
-  if (!fs.existsSync(ddlPath)) return;
-
+  // Schema DDL is managed by Drizzle Kit and UpdateSchema.
+  // We only run light verification here without throwing permission errors.
   try {
-    const rawSql = fs.readFileSync(ddlPath, 'utf8');
-    const statements = rawSql
-      .split('--> statement-breakpoint')
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
-
-    for (const stmt of statements) {
-      try {
-        // Safe creation: convert CREATE TABLE to CREATE TABLE IF NOT EXISTS
-        let safeStmt = stmt;
-        if (stmt.startsWith('CREATE TABLE "')) {
-          safeStmt = stmt.replace('CREATE TABLE "', 'CREATE TABLE IF NOT EXISTS "');
-        }
-        await pool.query(safeStmt);
-      } catch (err: any) {
-        // Ignore "already exists" or duplicate object errors
-        if (
-          err.code === '42P07' || // relation already exists
-          err.code === '42710' || // duplicate object
-          err.message?.includes('already exists')
-        ) {
-          continue;
-        }
-        console.warn('[PostgresSync] Aviso na instrução DDL:', err.message);
-      }
-    }
-
-    // Ensure backwards-compatible columns exist
-    try {
-      await pool.query(`ALTER TABLE "product_images" ADD COLUMN IF NOT EXISTS "type" text DEFAULT 'gallery' NOT NULL;`);
-    } catch {
-      // ignore
-    }
-
-    console.log('[PostgresSync] Estrutura DDL no PostgreSQL verificada com sucesso.');
+    const res = await pool.query(`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`);
+    console.log(`[PostgresSync] Tabelas ativas no PostgreSQL: ${res.rowCount} tabelas.`);
   } catch (err: any) {
-    console.error('[PostgresSync] Erro ao aplicar DDL no PostgreSQL:', err.message);
+    console.warn('[PostgresSync] Verificação de tabelas:', err.message);
   }
 }
 
@@ -89,9 +55,23 @@ export async function migrateDiskToPostgres(pool: Pool): Promise<{ migratedCount
     const dump = JSON.parse(raw);
     if (!dump || typeof dump !== 'object') return { migratedCount: 0 };
 
+    // Cache table columns from PostgreSQL information_schema
+    const colRes = await pool.query(
+      `SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public'`
+    );
+    const tableColumnsMap = new Map<string, Set<string>>();
+    for (const row of colRes.rows) {
+      if (!tableColumnsMap.has(row.table_name)) {
+        tableColumnsMap.set(row.table_name, new Set());
+      }
+      tableColumnsMap.get(row.table_name)!.add(row.column_name);
+    }
+
     for (const table of TABLES_ORDER) {
       const rows = dump[table];
       if (!Array.isArray(rows) || rows.length === 0) continue;
+      const validCols = tableColumnsMap.get(table);
+      if (!validCols) continue;
 
       for (const row of rows) {
         try {
@@ -115,10 +95,40 @@ export async function migrateDiskToPostgres(pool: Pool): Promise<{ migratedCount
             continue;
           }
 
-          // Build INSERT statement
-          const columns = Object.keys(row).map((c) => `"${c}"`);
-          const placeholders = Object.keys(row).map((_, idx) => `$${idx + 1}`);
-          const values = Object.values(row).map((val) => {
+          // Filter only valid columns that exist in the PostgreSQL table
+          const sanitizedRow: Record<string, any> = {};
+          for (const [key, val] of Object.entries(row)) {
+            // Check direct snake_case match
+            if (validCols.has(key)) {
+              sanitizedRow[key] = val;
+              continue;
+            }
+            // Check camelCase to snake_case conversion
+            const snakeKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+            if (validCols.has(snakeKey) && sanitizedRow[snakeKey] === undefined) {
+              sanitizedRow[snakeKey] = val;
+            }
+          }
+
+          // Special handling for users: ensure normalized_email and password_hash
+          if (table === 'users') {
+            if (!sanitizedRow.normalized_email && sanitizedRow.email) {
+              sanitizedRow.normalized_email = String(sanitizedRow.email).trim().toLowerCase();
+            }
+            if (!sanitizedRow.password_hash && row.passwordHash) {
+              sanitizedRow.password_hash = row.passwordHash;
+            }
+            if (!sanitizedRow.uid) {
+              sanitizedRow.uid = 'vend_' + (row.id || Math.random().toString(36).substring(2));
+            }
+          }
+
+          const colNames = Object.keys(sanitizedRow);
+          if (colNames.length === 0) continue;
+
+          const columns = colNames.map((c) => `"${c}"`);
+          const placeholders = colNames.map((_, idx) => `$${idx + 1}`);
+          const values = Object.values(sanitizedRow).map((val) => {
             if (val && typeof val === 'object' && !(val instanceof Date)) {
               return JSON.stringify(val);
             }
@@ -129,15 +139,14 @@ export async function migrateDiskToPostgres(pool: Pool): Promise<{ migratedCount
           await pool.query(insertSql, values);
           totalMigrated++;
         } catch (insertErr: any) {
-          // Ignore individual constraint collisions during sync
+          console.warn(`[PostgresSync] Erro ao inserir linha em ${table}:`, insertErr.message);
         }
       }
 
       // Reset auto-increment sequence if table has serial 'id'
       try {
         await pool.query(`
-          SELECT setval(pg_get_serial_sequence('${table}', 'id'), COALESCE(MAX(id), 1)) 
-          FROM "${table}"
+          SELECT setval(pg_get_serial_sequence('${table}', 'id'), COALESCE((SELECT MAX(id) FROM "${table}"), 1))
         `);
       } catch {
         // Table may not have serial id, ignore

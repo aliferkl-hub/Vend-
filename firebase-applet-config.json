@@ -3,6 +3,7 @@
   "appId": "1:815437066644:web:ae34f2fc27824f3a421f81",
   "apiKey": "AIzaSyBXqzMDMgl2d9j9tbkdN-uGby6c7rsZF_E",
   "authDomain": "intelligent-key-dlcf1.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-vend-d1817472-938a-444f-85f9-7793d3f009d4",
   "storageBucket": "intelligent-key-dlcf1.firebasestorage.app",
   "messagingSenderId": "815437066644",
   "measurementId": "",

@@ -229,7 +229,8 @@ router.post('/register', async (req: AuthRequest, res) => {
 // 2. LOGIN: POST /api/auth/login
 router.post('/login', async (req: AuthRequest, res) => {
   try {
-    const { email: rawEmail, password } = req.body;
+    const rawEmail = req.body.email || req.body.login || req.body.username;
+    const { password } = req.body;
 
     console.log('[AUTH LOGIN ATTEMPT] Tentativa de login recebida');
 
