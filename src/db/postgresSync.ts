@@ -162,3 +162,44 @@ export async function migrateDiskToPostgres(pool: Pool): Promise<{ migratedCount
 
   return { migratedCount: totalMigrated };
 }
+
+/**
+ * Creates a redundant snapshot backup of all vital business tables from Cloud SQL PostgreSQL
+ * to local disk as a fallback safeguard. Does not alter or replace the active PostgreSQL database.
+ */
+export async function backupPostgresToLocalSnapshot(pool: Pool): Promise<{ success: boolean; tablesBackedUp: number }> {
+  try {
+    const dataDir = path.join(process.cwd(), 'data');
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+
+    const snapshot: Record<string, any[]> = {};
+    let tablesCount = 0;
+
+    for (const table of TABLES_ORDER) {
+      try {
+        const res = await pool.query(`SELECT * FROM "${table}" ORDER BY id ASC`);
+        // Never expose or dump raw password hashes in backups or logs unnecessarily
+        snapshot[table] = res.rows.map((row) => {
+          if (table === 'users' && row.password_hash) {
+            return { ...row, password_hash: '[PROTECTED_HASH]' };
+          }
+          return row;
+        });
+        tablesCount++;
+      } catch {
+        // Table might not exist or have different structure
+      }
+    }
+
+    const backupPath = path.join(dataDir, 'vend_database_snapshot.json');
+    fs.writeFileSync(backupPath, JSON.stringify(snapshot, null, 2), 'utf8');
+    console.log(`[PostgresSync] Snapshot de backup concluído com sucesso (${tablesCount} tabelas arquivadas).`);
+    return { success: true, tablesBackedUp: tablesCount };
+  } catch (err: any) {
+    console.warn('[PostgresSync] Falha ao gerar snapshot de backup secundário:', err.message);
+    return { success: false, tablesBackedUp: 0 };
+  }
+}
+

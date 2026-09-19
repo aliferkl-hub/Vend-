@@ -90,6 +90,20 @@ router.get('/', async (req, res) => {
       conditions.push(eq(products.allowsNegotiation, true));
     }
 
+    if (req.query.sellerId) {
+      const parsedSellerId = parseInt(req.query.sellerId as string);
+      if (!isNaN(parsedSellerId)) {
+        conditions.push(eq(products.sellerId, parsedSellerId));
+      }
+    }
+
+    if (req.query.storeId) {
+      const parsedStoreId = parseInt(req.query.storeId as string);
+      if (!isNaN(parsedStoreId)) {
+        conditions.push(eq(products.storeId, parsedStoreId));
+      }
+    }
+
     // Category filter
     let targetCategoryId: number | undefined;
     if (categorySlug) {
@@ -444,6 +458,8 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
 
     return res.status(201).json({
       message: 'Produto publicado com sucesso!',
+      id: newProduct.id,
+      ...newProduct,
       product: newProduct,
       images: mappedSaved,
       productImages: mappedSaved,

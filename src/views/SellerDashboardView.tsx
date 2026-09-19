@@ -50,7 +50,7 @@ export const SellerDashboardView: React.FC<SellerDashboardViewProps> = ({
       }
 
       // Fetch active products
-      const resProducts = await fetch('/api/products?limit=50');
+      const resProducts = await fetch(user?.id ? `/api/products?sellerId=${user.id}&limit=100` : '/api/products?limit=50');
       if (resProducts.ok) {
         const dataProducts = await resProducts.json();
         // Filter my products

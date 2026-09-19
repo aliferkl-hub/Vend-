@@ -468,6 +468,59 @@ router.get('/me', async (req: AuthRequest, res) => {
   }
 });
 
+// 4b. UPDATE PROFILE: PUT /api/auth/profile
+router.put('/profile', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const user = req.user!;
+    const { name, phone, location, avatarUrl, bio, documentNumber, preferences } = req.body;
+
+    const userUpdates: Record<string, any> = {};
+    if (name && typeof name === 'string' && name.trim()) userUpdates.name = name.trim();
+    if (phone !== undefined) userUpdates.phone = phone ? String(phone).trim() : null;
+    if (location !== undefined) userUpdates.location = location ? String(location).trim() : null;
+    if (avatarUrl !== undefined) userUpdates.avatarUrl = avatarUrl ? String(avatarUrl).trim() : null;
+
+    if (Object.keys(userUpdates).length > 0) {
+      await UserRepository.updateUser(user.id, userUpdates);
+    }
+
+    // Profile updates
+    const profileUpdates: Record<string, any> = { updatedAt: new Date() };
+    if (bio !== undefined) profileUpdates.bio = bio ? String(bio).trim() : null;
+    if (documentNumber !== undefined) profileUpdates.documentNumber = documentNumber ? String(documentNumber).trim() : null;
+    if (preferences !== undefined) {
+      profileUpdates.preferences = typeof preferences === 'string' ? preferences : JSON.stringify(preferences);
+    }
+
+    const [existingProfile] = await db.select().from(profiles).where(eq(profiles.userId, user.id)).limit(1);
+    if (existingProfile) {
+      await db.update(profiles).set(profileUpdates).where(eq(profiles.userId, user.id));
+    } else {
+      await db.insert(profiles).values({
+        userId: user.id,
+        bio: profileUpdates.bio || null,
+        documentNumber: profileUpdates.documentNumber || null,
+        preferences: profileUpdates.preferences || null,
+      });
+    }
+
+    const updatedUser = await UserRepository.findById(user.id);
+    const [updatedProfile] = await db.select().from(profiles).where(eq(profiles.userId, user.id)).limit(1);
+
+    return res.json({
+      success: true,
+      message: 'Perfil atualizado com sucesso!',
+      user: {
+        ...UserRepository.sanitizeUser(updatedUser!),
+        profile: updatedProfile || null,
+      },
+    });
+  } catch (err: any) {
+    console.error('Update profile error:', err);
+    return res.status(500).json({ success: false, error: 'Erro ao atualizar perfil.' });
+  }
+});
+
 // 5. CHANGE PASSWORD: POST /api/auth/change-password
 router.post('/change-password', requireAuth, async (req: AuthRequest, res) => {
   try {
