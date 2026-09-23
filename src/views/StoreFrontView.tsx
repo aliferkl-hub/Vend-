@@ -339,13 +339,19 @@ export const StoreFrontView: React.FC<StoreFrontViewProps> = ({ storeSlug, onNav
                           <button
                             onClick={() => {
                               addItem({
-                                id: prod.id,
+                                productId: prod.id,
+                                type: 'PRODUCT',
+                                title: prod.name,
                                 name: prod.name,
                                 priceCents: prod.priceCents,
+                                price: prod.priceCents / 100,
                                 imageUrl: prod.imageUrl,
+                                image: prod.imageUrl,
+                                sellerId: prod.sellerId || storeData?.userId || storeData?.id,
+                                sellerName: storeData?.name || 'Loja Parceira',
                                 stock: prod.stock,
+                                quantity: 1,
                               });
-                              alert('Produto adicionado ao carrinho!');
                             }}
                             className="flex-1 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5"
                           >
@@ -500,13 +506,19 @@ export const StoreFrontView: React.FC<StoreFrontViewProps> = ({ storeSlug, onNav
                     <button
                       onClick={() => {
                         addItem({
-                          id: selectedProduct.id,
+                          productId: selectedProduct.id,
+                          type: 'PRODUCT',
+                          title: selectedProduct.name,
                           name: selectedProduct.name,
                           priceCents: selectedProduct.priceCents,
+                          price: selectedProduct.priceCents / 100,
                           imageUrl: selectedProduct.imageUrl,
+                          image: selectedProduct.imageUrl,
+                          sellerId: selectedProduct.sellerId || storeData?.userId || storeData?.id,
+                          sellerName: storeData?.name || 'Loja Parceira',
                           stock: selectedProduct.stock,
+                          quantity: 1,
                         });
-                        alert('Adicionado ao carrinho!');
                         setSelectedProduct(null);
                       }}
                       className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-sm transition"

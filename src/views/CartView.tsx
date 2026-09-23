@@ -62,57 +62,75 @@ export const CartView: React.FC<CartViewProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Items List (8 cols) */}
         <div className="lg:col-span-8 space-y-3">
-          {items.map((item) => (
-            <div
-              key={item.id}
-              id={`cart-item-${item.id}`}
-              className="bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs flex items-center gap-4"
-            >
-              <img
-                src={item.imageUrl}
-                alt={item.title}
-                className="w-16 h-16 rounded-xl object-cover bg-slate-100 flex-shrink-0"
-              />
-              <div className="flex-1 min-w-0">
-                <h3 className="text-xs font-bold text-slate-900 truncate">{item.title}</h3>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Vendedor: <span className="font-semibold text-slate-700">{item.sellerName || 'Local'}</span>
-                </p>
-                <div className="text-sm font-black text-slate-950 mt-1">
-                  {((item.priceCents * item.quantity) / 100).toLocaleString('pt-BR', {
-                    style: 'currency',
-                    currency: 'BRL',
-                  })}
-                </div>
-              </div>
+          {items.map((item) => {
+            const itemTitle = item.name || item.title || 'Produto VEND+';
+            const itemImg = item.image || item.imageUrl || '';
+            const unitPrice = item.priceCents || (item.price ? item.price * 100 : 0);
+            const itemSubtotal = item.subtotalCents || unitPrice * item.quantity;
 
-              {/* Quantity controls */}
-              <div className="flex items-center gap-2 bg-slate-100 rounded-xl p-1">
-                <button
-                  onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                  className="w-7 h-7 rounded-lg bg-white flex items-center justify-center text-slate-700 hover:bg-slate-200"
-                >
-                  <Minus className="w-3 h-3" />
-                </button>
-                <span className="text-xs font-bold text-slate-900 px-1">{item.quantity}</span>
-                <button
-                  onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                  className="w-7 h-7 rounded-lg bg-white flex items-center justify-center text-slate-700 hover:bg-slate-200"
-                >
-                  <Plus className="w-3 h-3" />
-                </button>
-              </div>
-
-              {/* Remove */}
-              <button
-                onClick={() => removeItem(item.id)}
-                className="text-slate-400 hover:text-rose-500 p-1 rounded-lg"
-                title="Remover item"
+            return (
+              <div
+                key={item.id}
+                id={`cart-item-${item.id}`}
+                className="bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs flex items-center gap-4"
               >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          ))}
+                {itemImg ? (
+                  <img
+                    src={itemImg}
+                    alt={itemTitle}
+                    className="w-16 h-16 rounded-xl object-cover bg-slate-100 flex-shrink-0"
+                  />
+                ) : (
+                  <div className="w-16 h-16 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 flex-shrink-0">
+                    <ShoppingBag className="w-6 h-6" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-xs font-bold text-slate-900 truncate" title={itemTitle}>{itemTitle}</h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Vendedor: <span className="font-semibold text-slate-700">{item.sellerName || 'Local'}</span>
+                  </p>
+                  {item.variations && (
+                    <p className="text-[10px] text-emerald-600 font-medium truncate">
+                      {typeof item.variations === 'string' ? item.variations : JSON.stringify(item.variations)}
+                    </p>
+                  )}
+                  <div className="text-sm font-black text-slate-950 mt-1">
+                    {(itemSubtotal / 100).toLocaleString('pt-BR', {
+                      style: 'currency',
+                      currency: 'BRL',
+                    })}
+                  </div>
+                </div>
+
+                {/* Quantity controls */}
+                <div className="flex items-center gap-2 bg-slate-100 rounded-xl p-1">
+                  <button
+                    onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                    className="w-7 h-7 rounded-lg bg-white flex items-center justify-center text-slate-700 hover:bg-slate-200"
+                  >
+                    <Minus className="w-3 h-3" />
+                  </button>
+                  <span className="text-xs font-bold text-slate-900 px-1">{item.quantity}</span>
+                  <button
+                    onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                    className="w-7 h-7 rounded-lg bg-white flex items-center justify-center text-slate-700 hover:bg-slate-200"
+                  >
+                    <Plus className="w-3 h-3" />
+                  </button>
+                </div>
+
+                {/* Remove */}
+                <button
+                  onClick={() => removeItem(item.id)}
+                  className="text-slate-400 hover:text-rose-500 p-1 rounded-lg"
+                  title="Remover item"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            );
+          })}
 
           <button
             onClick={onContinueShopping}

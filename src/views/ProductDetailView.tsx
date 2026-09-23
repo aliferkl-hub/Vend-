@@ -77,7 +77,6 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
 
   const handleAddToCart = () => {
     if (product.stock <= 0) {
-      alert('Produto VEND+ — sem estoque no momento');
       return;
     }
 
@@ -85,19 +84,44 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
       productId: product.id,
       type: 'PRODUCT',
       title: product.name,
+      name: product.name,
       priceCents: product.priceCents,
+      price: product.priceCents / 100,
       quantity: 1,
       imageUrl: product.imageUrl,
+      image: product.imageUrl,
       sellerId: product.sellerId,
-      sellerName: product.seller?.name || 'Vendedor',
+      sellerName: product.seller?.name || 'Vendedor VEND+',
+      stock: product.stock,
     });
 
     if (res.success) {
       setAddedToast(true);
       setTimeout(() => setAddedToast(false), 3000);
-    } else if (res.message) {
-      alert(res.message);
     }
+  };
+
+  const handleBuyNow = () => {
+    if (product.stock <= 0) {
+      return;
+    }
+
+    addItem({
+      productId: product.id,
+      type: 'PRODUCT',
+      title: product.name,
+      name: product.name,
+      priceCents: product.priceCents,
+      price: product.priceCents / 100,
+      quantity: 1,
+      imageUrl: product.imageUrl,
+      image: product.imageUrl,
+      sellerId: product.sellerId,
+      sellerName: product.seller?.name || 'Vendedor VEND+',
+      stock: product.stock,
+    });
+
+    onBuyNow(product);
   };
 
   const handleStartOffer = async (offerCents: number, message: string): Promise<boolean> => {
@@ -340,7 +364,7 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
                 <>
                   <button
                     id="buy-now-btn"
-                    onClick={() => onBuyNow(product)}
+                    onClick={handleBuyNow}
                     className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-sm shadow-md transition-transform active:scale-[0.99] flex items-center justify-center gap-2"
                   >
                     <span>Comprar Agora</span>

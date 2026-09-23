@@ -144,12 +144,18 @@ export interface CartItem {
   serviceId?: number;
   type: 'PRODUCT' | 'SERVICE';
   title: string;
+  name?: string; // alias/nome
   priceCents: number;
+  price?: number; // valor em reais (priceCents / 100)
   quantity: number;
   imageUrl: string;
+  image?: string; // alias/imagem
   sellerId: number;
   sellerName?: string;
   stock?: number;
+  variations?: Record<string, any> | string | null;
+  subtotalCents?: number;
+  subtotal?: number;
 }
 
 export interface OrderItem {

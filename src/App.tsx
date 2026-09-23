@@ -33,15 +33,26 @@ import { App as CapApp } from '@capacitor/app';
 
 const MainApp: React.FC = () => {
   const { user, authFetch } = useAuth();
-  const { totalItemsCount } = useCart();
+  const { totalItemsCount, addItem, clearCart } = useCart();
 
-  // Navigation State
-  const [currentView, setCurrentView] = useState<string>('home');
+  // Navigation State with Session Persistence
+  const [currentView, setCurrentView] = useState<string>(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('loja')) return 'store-front';
+      const payment = urlParams.get('payment') || urlParams.get('status') || urlParams.get('collection_status');
+      if (payment === 'success' || payment === 'approved') return 'orders';
+      const saved = sessionStorage.getItem('vend_current_view');
+      return saved || 'home';
+    } catch {
+      return 'home';
+    }
+  });
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCategorySlug, setSelectedCategorySlug] = useState<string>('');
   const [storeSlug, setStoreSlug] = useState<string>('');
 
-  // Check URL query parameters for direct store view (?loja=slug)
+  // Check URL query parameters for direct store view (?loja=slug) and payment return
   useEffect(() => {
     try {
       const urlParams = new URLSearchParams(window.location.search);
@@ -50,16 +61,29 @@ const MainApp: React.FC = () => {
         setStoreSlug(loja);
         setCurrentView('store-front');
       }
+      const payment = urlParams.get('payment') || urlParams.get('status') || urlParams.get('collection_status');
+      if (payment === 'success' || payment === 'approved') {
+        clearCart();
+        sessionStorage.removeItem('vend_checkout_negotiation');
+        setCurrentView('orders');
+      }
     } catch {
       // ignore
     }
-  }, []);
+  }, [clearCart]);
 
   // Selected item states
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [selectedService, setSelectedService] = useState<ServiceItem | null>(null);
-  const [checkoutNegotiation, setCheckoutNegotiation] = useState<Negotiation | null>(null);
+  const [checkoutNegotiation, setCheckoutNegotiation] = useState<Negotiation | null>(() => {
+    try {
+      const saved = sessionStorage.getItem('vend_checkout_negotiation');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
 
   // Modals
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
@@ -155,6 +179,9 @@ const MainApp: React.FC = () => {
   // Handlers
   const handleNavigate = (view: string, param?: any) => {
     setCurrentView(view);
+    try {
+      sessionStorage.setItem('vend_current_view', view);
+    } catch {}
     if (view === 'search' && typeof param === 'string') {
       setSearchQuery(param);
     }
@@ -174,40 +201,55 @@ const MainApp: React.FC = () => {
   const handleSearchSubmit = (query: string) => {
     setSearchQuery(query);
     setSelectedCategorySlug('');
-    setCurrentView('search');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    handleNavigate('search');
   };
 
   const handleSelectCategory = (slug: string) => {
     setSelectedCategorySlug(slug);
     setSearchQuery('');
-    setCurrentView('search');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    handleNavigate('search');
   };
 
   const handleSelectProduct = (prod: Product) => {
     setSelectedProduct(prod);
-    setCurrentView('product-detail');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    handleNavigate('product-detail');
   };
 
   const handleSelectService = (serv: ServiceItem) => {
     setSelectedService(serv);
-    // Can navigate to services view or negotiation
-    setCurrentView('services');
+    handleNavigate('services');
   };
 
   const handleBuyNow = (prod: Product) => {
+    // Add product to cart directly to guarantee persistence with all required fields
+    addItem({
+      productId: prod.id,
+      type: 'PRODUCT',
+      title: prod.name,
+      name: prod.name,
+      priceCents: prod.priceCents,
+      price: prod.priceCents / 100,
+      quantity: 1,
+      imageUrl: prod.imageUrl,
+      image: prod.imageUrl,
+      sellerId: prod.sellerId,
+      sellerName: prod.seller?.name || 'Vendedor VEND+',
+      stock: prod.stock,
+    });
     setSelectedProduct(prod);
     setCheckoutNegotiation(null);
-    setCurrentView('checkout');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    try {
+      sessionStorage.removeItem('vend_checkout_negotiation');
+    } catch {}
+    handleNavigate('checkout');
   };
 
   const handleProceedNegotiationToCheckout = (neg: Negotiation) => {
     setCheckoutNegotiation(neg);
-    setCurrentView('checkout');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    try {
+      sessionStorage.setItem('vend_checkout_negotiation', JSON.stringify(neg));
+    } catch {}
+    handleNavigate('checkout');
   };
 
   const handleOrderCreated = (orderId: number) => {

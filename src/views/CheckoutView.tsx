@@ -15,10 +15,11 @@ import {
   KeyRound,
   ExternalLink,
   X,
+  ShoppingBag,
 } from 'lucide-react';
 import { CartItem, Address, Negotiation } from '../types.ts';
 import { useAuth } from '../context/AuthContext.tsx';
-import { useCart } from '../context/CartContext.tsx';
+import { useCart, normalizeCartItem } from '../context/CartContext.tsx';
 
 interface CheckoutViewProps {
   negotiationItem?: Negotiation | null;
@@ -45,22 +46,66 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
   const { user } = useAuth();
   const { items: cartItems, clearCart } = useCart();
 
-  // If coming from an accepted negotiation, build single item
-  const checkoutItems: CartItem[] = negotiationItem
-    ? [
+  // Active negotiation support (restored from props or session storage)
+  const [activeNegotiation, setActiveNegotiation] = useState<Negotiation | null>(() => {
+    if (negotiationItem) return negotiationItem;
+    try {
+      const savedNeg = sessionStorage.getItem('vend_checkout_negotiation');
+      return savedNeg ? JSON.parse(savedNeg) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    if (negotiationItem) {
+      setActiveNegotiation(negotiationItem);
+    }
+  }, [negotiationItem]);
+
+  // Robust cart items loader with fallback to ensure items are never lost during navigation
+  const checkoutItems: CartItem[] = React.useMemo(() => {
+    if (activeNegotiation) {
+      const pName = activeNegotiation.product?.name || activeNegotiation.service?.name || 'Item Negociado';
+      const pImg = activeNegotiation.product?.imageUrl || activeNegotiation.service?.imageUrl || '';
+      const pPrice = activeNegotiation.finalAgreedPriceCents || activeNegotiation.currentOfferCents;
+      return [
         {
-          id: `neg-${negotiationItem.id}`,
-          productId: negotiationItem.productId || undefined,
-          serviceId: negotiationItem.serviceId || undefined,
-          type: negotiationItem.productId ? 'PRODUCT' : 'SERVICE',
-          title: negotiationItem.product?.name || negotiationItem.service?.name || 'Item Negociado',
-          priceCents: negotiationItem.finalAgreedPriceCents || negotiationItem.currentOfferCents,
+          id: `neg-${activeNegotiation.id}`,
+          productId: activeNegotiation.productId || undefined,
+          serviceId: activeNegotiation.serviceId || undefined,
+          type: (activeNegotiation.productId ? 'PRODUCT' : 'SERVICE') as 'PRODUCT' | 'SERVICE',
+          title: pName,
+          name: pName,
+          priceCents: pPrice,
+          price: pPrice / 100,
           quantity: 1,
-          imageUrl: negotiationItem.product?.imageUrl || negotiationItem.service?.imageUrl || '',
-          sellerId: negotiationItem.sellerId,
+          imageUrl: pImg,
+          image: pImg,
+          sellerId: activeNegotiation.sellerId,
+          sellerName: activeNegotiation.seller?.name || 'Vendedor VEND+',
+          subtotalCents: pPrice,
+          subtotal: pPrice / 100,
         },
-      ]
-    : cartItems;
+      ];
+    }
+
+    if (cartItems && cartItems.length > 0) {
+      return cartItems;
+    }
+
+    try {
+      const saved = localStorage.getItem('vend_cart') || sessionStorage.getItem('vend_cart');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map(normalizeCartItem);
+        }
+      }
+    } catch {}
+
+    return [];
+  }, [activeNegotiation, cartItems]);
 
   const [deliveryType, setDeliveryType] = useState<'SHIPPING' | 'PICKUP'>('SHIPPING');
   const [paymentMethod, setPaymentMethod] = useState<'PIX' | 'MERCADO_PAGO_CHECKOUT'>('PIX');
@@ -142,6 +187,10 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
           const data = await res.json();
           if (data.approved) {
             setPaymentApproved(true);
+            clearCart();
+            try {
+              sessionStorage.removeItem('vend_checkout_negotiation');
+            } catch {}
             if (pollingRef.current) clearInterval(pollingRef.current);
           }
         }
@@ -237,10 +286,6 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
         return;
       }
 
-      if (!negotiationItem) {
-        clearCart();
-      }
-
       const createdOrderId = orderData.orderId;
       const deliveryCode = orderData.deliveryCode || '••••';
 
@@ -288,6 +333,10 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
 
         const prefData = await resPref.json();
         if (resPref.ok && prefData.initPoint) {
+          clearCart();
+          try {
+            sessionStorage.removeItem('vend_checkout_negotiation');
+          } catch {}
           window.location.href = prefData.initPoint;
         } else {
           onOrderCreated(createdOrderId);
@@ -316,6 +365,10 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
         const data = await res.json();
         if (data.approved) {
           setPaymentApproved(true);
+          clearCart();
+          try {
+            sessionStorage.removeItem('vend_checkout_negotiation');
+          } catch {}
         } else {
           alert('O Mercado Pago ainda está aguardando a confirmação do pagamento pelo seu banco.');
         }
@@ -358,9 +411,27 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left column: Steps (8 cols) */}
-        <div className="lg:col-span-8 space-y-6">
+      {checkoutItems.length === 0 ? (
+        <div id="checkout-empty-cart-state" className="bg-white rounded-3xl border border-slate-200 p-12 text-center space-y-4 max-w-lg mx-auto shadow-sm my-6">
+          <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto text-slate-400">
+            <ShoppingBag className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-black text-slate-900">O carrinho está vazio</h2>
+          <p className="text-xs text-slate-500 leading-relaxed">
+            Nenhum produto foi selecionado para compra. Adicione produtos ao seu carrinho pelo marketplace para concluir o checkout com o Mercado Pago.
+          </p>
+          <button
+            id="checkout-empty-back-btn"
+            onClick={onBack}
+            className="px-6 py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs shadow-md transition cursor-pointer"
+          >
+            Explorar Produtos no VEND+
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Left column: Steps (8 cols) */}
+          <div className="lg:col-span-8 space-y-6">
           {/* STEP 1: Delivery Mode */}
           <div className="bg-white rounded-3xl border border-slate-200 p-5 shadow-2xs space-y-3">
             <h2 className="text-sm font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
@@ -633,22 +704,51 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
             </h3>
 
             {/* Items mini list */}
-            <div className="space-y-2.5 max-h-56 overflow-y-auto">
-              {checkoutItems.map((it) => (
-                <div key={it.id} className="flex items-center gap-2.5 text-xs">
-                  <img src={it.imageUrl} alt="" className="w-10 h-10 rounded-lg object-cover bg-slate-100 flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-slate-900 truncate">{it.title}</p>
-                    <p className="text-[11px] text-slate-500">Qtd: {it.quantity}</p>
+            <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
+              {checkoutItems.map((it) => {
+                const itemTitle = it.name || it.title || 'Produto VEND+';
+                const itemImg = it.image || it.imageUrl || '';
+                const unitCents = it.priceCents || (it.price ? it.price * 100 : 0);
+                const itemSubtotalCents = it.subtotalCents || unitCents * (it.quantity || 1);
+
+                return (
+                  <div key={it.id} className="flex items-center gap-2.5 text-xs p-2 rounded-xl bg-slate-50 border border-slate-100">
+                    {itemImg ? (
+                      <img
+                        src={itemImg}
+                        alt={itemTitle}
+                        className="w-11 h-11 rounded-lg object-cover bg-white flex-shrink-0 border border-slate-200"
+                      />
+                    ) : (
+                      <div className="w-11 h-11 rounded-lg bg-slate-200 flex items-center justify-center text-slate-400 flex-shrink-0">
+                        <Package className="w-5 h-5" />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-slate-900 truncate" title={itemTitle}>
+                        {itemTitle}
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        Qtd: <strong className="text-slate-800">{it.quantity}</strong> × {(unitCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      </p>
+                      {it.sellerName && (
+                        <p className="text-[10px] text-slate-400 truncate">Vendedor: {it.sellerName}</p>
+                      )}
+                      {it.variations && (
+                        <p className="text-[10px] text-emerald-600 font-medium truncate">
+                          {typeof it.variations === 'string' ? it.variations : JSON.stringify(it.variations)}
+                        </p>
+                      )}
+                    </div>
+                    <span className="font-bold text-slate-900 whitespace-nowrap">
+                      {(itemSubtotalCents / 100).toLocaleString('pt-BR', {
+                        style: 'currency',
+                        currency: 'BRL',
+                      })}
+                    </span>
                   </div>
-                  <span className="font-bold text-slate-900">
-                    {((it.priceCents * it.quantity) / 100).toLocaleString('pt-BR', {
-                      style: 'currency',
-                      currency: 'BRL',
-                    })}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="pt-3 border-t border-slate-100 space-y-1.5 text-xs">
@@ -687,7 +787,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
 
             <button
               id="confirm-order-btn"
-              disabled={loading || !mpConfigured}
+              disabled={loading || !mpConfigured || checkoutItems.length === 0}
               onClick={handleFinishOrder}
               className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-200 disabled:text-slate-400 text-slate-950 font-black rounded-xl text-sm shadow-md transition-all active:scale-[0.99] disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
             >
@@ -701,6 +801,8 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
                   <AlertCircle className="w-5 h-5 text-slate-400" />
                   <span>Aguardando Configuração do Mercado Pago</span>
                 </>
+              ) : checkoutItems.length === 0 ? (
+                <span>O carrinho está vazio</span>
               ) : (
                 <>
                   <CheckCircle className="w-5 h-5" />
@@ -722,6 +824,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
           </div>
         </div>
       </div>
+      )}
 
       {/* REAL PIX MERCADO PAGO MODAL FOR ORDER */}
       {pixOrderModal && (
