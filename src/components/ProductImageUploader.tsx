@@ -7,10 +7,12 @@ import {
   CheckCircle2,
   RefreshCw,
   Plus,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { ProductImageType } from '../types.ts';
 import { uploadImageToStorage, validateImageFile } from '../utils/imageOptimizer.ts';
 import { useAuth } from '../context/AuthContext.tsx';
+import nativeBridge from '../services/nativeBridge.ts';
 
 export interface LocalProductImageItem {
   id?: number;
@@ -199,6 +201,42 @@ export const ProductImageUploader: React.FC<ProductImageUploaderProps> = ({
     setShowUrlInput(false);
   };
 
+  const handleNativeCamera = async () => {
+    if (standardImages.length >= maxImages) {
+      setErrorMessage(`Limite de até ${maxImages} fotos por anúncio atingido.`);
+      return;
+    }
+    setErrorMessage(null);
+    try {
+      const res = await nativeBridge.takePhotoWithCamera();
+      if (res) {
+        nativeBridge.hapticFeedback();
+        await handleFilesSelected([res.file]);
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Erro ao capturar foto com a câmera nativa.');
+    }
+  };
+
+  const handleNativeGallery = async () => {
+    if (standardImages.length >= maxImages) {
+      setErrorMessage(`Limite de até ${maxImages} fotos por anúncio atingido.`);
+      return;
+    }
+    setErrorMessage(null);
+    try {
+      const res = await nativeBridge.pickPhotoFromGallery();
+      if (res) {
+        nativeBridge.hapticFeedback();
+        await handleFilesSelected([res.file]);
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Erro ao selecionar foto da galeria nativa.');
+    }
+  };
+
+  const isNative = nativeBridge.isNative();
+
   return (
     <div className="space-y-3.5">
       {/* Hidden native file input accepting JPG, JPEG, PNG, WEBP and multiple files */}
@@ -227,22 +265,50 @@ export const ProductImageUploader: React.FC<ProductImageUploaderProps> = ({
           </span>
         </div>
         <p className="text-xs text-slate-500 mt-1">
-          Adicione fotos do seu celular, tablet ou computador. Você também pode usar uma imagem da internet.
+          {isNative
+            ? 'Tire fotos com a câmera do celular ou selecione da sua galeria.'
+            : 'Adicione fotos do seu celular, tablet ou computador. Você também pode usar uma imagem da internet.'}
         </p>
       </div>
 
-      {/* Action buttons: Escolher fotos do dispositivo & Usar imagem da internet */}
+      {/* Action buttons: Suporte híbrido Mobile Nativo + Web */}
       <div className="flex flex-wrap items-center gap-2.5">
-        <button
-          type="button"
-          id="btn-choose-device-photos"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={isUploading || standardImages.length >= maxImages}
-          className="px-4 py-2.5 bg-[#0B192C] hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-xs transition active:scale-[0.99] disabled:opacity-50 cursor-pointer"
-        >
-          <Camera className="w-4 h-4 text-emerald-400" />
-          <span>📷 Escolher fotos do dispositivo</span>
-        </button>
+        {isNative ? (
+          <>
+            <button
+              type="button"
+              id="btn-native-camera"
+              onClick={handleNativeCamera}
+              disabled={isUploading || standardImages.length >= maxImages}
+              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-xs transition active:scale-[0.99] disabled:opacity-50 cursor-pointer"
+            >
+              <Camera className="w-4 h-4 text-white" />
+              <span>📷 Tirar Foto (Câmera)</span>
+            </button>
+
+            <button
+              type="button"
+              id="btn-native-gallery"
+              onClick={handleNativeGallery}
+              disabled={isUploading || standardImages.length >= maxImages}
+              className="px-4 py-2.5 bg-[#0B192C] hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-xs transition active:scale-[0.99] disabled:opacity-50 cursor-pointer"
+            >
+              <ImageIcon className="w-4 h-4 text-sky-400" />
+              <span>🖼️ Escolher da Galeria</span>
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            id="btn-choose-device-photos"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading || standardImages.length >= maxImages}
+            className="px-4 py-2.5 bg-[#0B192C] hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-xs transition active:scale-[0.99] disabled:opacity-50 cursor-pointer"
+          >
+            <Camera className="w-4 h-4 text-emerald-400" />
+            <span>📷 Escolher fotos do dispositivo</span>
+          </button>
+        )}
 
         <button
           type="button"

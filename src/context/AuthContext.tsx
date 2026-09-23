@@ -3,6 +3,7 @@ import { User } from '../types.ts';
 import { auth, googleAuthProvider } from '../lib/firebase.ts';
 import { signInWithPopup, signOut as firebaseSignOut } from 'firebase/auth';
 import { normalizeEmail } from '../utils/normalizeEmail.ts';
+import nativeBridge from '../services/nativeBridge.ts';
 
 interface RegisterData {
   name: string;
@@ -58,6 +59,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [loading, setLoading] = useState(true);
 
+  // Helper to persist session to both localStorage and nativeBridge.storage (Preferences)
+  const persistSession = (u: User | null, t: string | null) => {
+    if (u) {
+      const serialized = JSON.stringify(u);
+      try { localStorage.setItem('vend_user', serialized); } catch {}
+      nativeBridge.storage.set('vend_user', serialized).catch(() => {});
+    } else {
+      try { localStorage.removeItem('vend_user'); } catch {}
+      nativeBridge.storage.remove('vend_user').catch(() => {});
+    }
+
+    if (t) {
+      try { localStorage.setItem('vend_token', t); } catch {}
+      nativeBridge.storage.set('vend_token', t).catch(() => {});
+    } else {
+      try { localStorage.removeItem('vend_token'); } catch {}
+      nativeBridge.storage.remove('vend_token').catch(() => {});
+    }
+  };
+
+  // Restore session from native storage if not already loaded from localStorage
+  useEffect(() => {
+    if (nativeBridge.isNative() && !user) {
+      (async () => {
+        try {
+          const [savedUserStr, savedToken] = await Promise.all([
+            nativeBridge.storage.get('vend_user'),
+            nativeBridge.storage.get('vend_token'),
+          ]);
+          if (savedUserStr) {
+            const parsedUser = JSON.parse(savedUserStr);
+            setUser(parsedUser);
+          }
+          if (savedToken) {
+            setToken(savedToken);
+          }
+        } catch {
+          // ignore
+        }
+      })();
+    }
+  }, [user]);
+
   // Authenticated fetch wrapper that automatically attaches the persistent token & cookies
   const authFetch = useCallback(
     async (input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> => {
@@ -92,25 +136,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const data = await res.json();
         if (data.authenticated && data.user) {
           setUser(data.user);
-          try {
-            localStorage.setItem('vend_user', JSON.stringify(data.user));
-          } catch {}
+          persistSession(data.user, currentToken || token);
         } else {
           setUser(null);
           setToken(null);
-          try {
-            localStorage.removeItem('vend_user');
-            localStorage.removeItem('vend_token');
-          } catch {}
+          persistSession(null, null);
         }
       } else if (res.status === 401) {
         // Backend invalidated or session expired - clear client session state
         setUser(null);
         setToken(null);
-        try {
-          localStorage.removeItem('vend_user');
-          localStorage.removeItem('vend_token');
-        } catch {}
+        persistSession(null, null);
       } else if (res.status >= 500) {
         // Server or database temporary error - DO NOT clear session or falsely show account missing!
         console.warn('[VEND+] Erro temporário do servidor ao checar sessão; mantendo dados locais.');
@@ -171,11 +207,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (data.token) {
         setToken(data.token);
-        localStorage.setItem('vend_token', data.token);
       }
       if (data.user) {
         setUser(data.user);
-        localStorage.setItem('vend_user', JSON.stringify(data.user));
+      }
+      if (data.user || data.token) {
+        persistSession(data.user || null, data.token || null);
       }
       return { success: true };
     } catch (err: any) {
@@ -239,11 +276,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (data.token) {
         setToken(data.token);
-        localStorage.setItem('vend_token', data.token);
       }
       if (data.user) {
         setUser(data.user);
-        localStorage.setItem('vend_user', JSON.stringify(data.user));
+      }
+      if (data.user || data.token) {
+        persistSession(data.user || null, data.token || null);
       }
       return { success: true };
     } catch {
@@ -325,8 +363,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (data.user) {
           setUser(data.user);
           setToken(idToken);
-          localStorage.setItem('vend_token', idToken);
-          localStorage.setItem('vend_user', JSON.stringify(data.user));
+          persistSession(data.user, idToken);
           return { success: true };
         }
       }
@@ -354,8 +391,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('Logout warning:', err);
     } finally {
       await firebaseSignOut(auth).catch(() => {});
-      localStorage.removeItem('vend_token');
-      localStorage.removeItem('vend_user');
+      persistSession(null, null);
       setToken(null);
       setUser(null);
     }

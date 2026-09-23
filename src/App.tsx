@@ -28,9 +28,11 @@ import { MyStoreView } from './views/MyStoreView.tsx';
 import { StoreFrontView } from './views/StoreFrontView.tsx';
 
 import { Product, ServiceItem, Category, Negotiation } from './types.ts';
+import nativeBridge from './services/nativeBridge.ts';
+import { App as CapApp } from '@capacitor/app';
 
 const MainApp: React.FC = () => {
-  const { user } = useAuth();
+  const { user, authFetch } = useAuth();
   const { totalItemsCount } = useCart();
 
   // Navigation State
@@ -97,6 +99,58 @@ const MainApp: React.FC = () => {
   useEffect(() => {
     fetchInitialData();
   }, []);
+
+  // Native Mobile Initialization (Status Bar, Back Button, Safe Area)
+  useEffect(() => {
+    if (!nativeBridge.isNative()) return;
+    nativeBridge.initStatusBar();
+
+    const backListener = CapApp.addListener('backButton', () => {
+      if (selectedProduct) {
+        setSelectedProduct(null);
+      } else if (selectedService) {
+        setSelectedService(null);
+      } else if (checkoutNegotiation) {
+        setCheckoutNegotiation(null);
+      } else if (currentView !== 'home') {
+        setCurrentView('home');
+      } else {
+        CapApp.exitApp();
+      }
+    });
+
+    return () => {
+      backListener.then((sub) => sub.remove()).catch(() => {});
+    };
+  }, [currentView, selectedProduct, selectedService, checkoutNegotiation]);
+
+  // Push Notifications Setup on Native
+  useEffect(() => {
+    if (user && nativeBridge.isNative()) {
+      nativeBridge.initPushNotifications(
+        (token) => {
+          authFetch('/api/notifications/push-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token, platform: nativeBridge.getPlatform() }),
+          }).catch(() => {});
+        },
+        () => {
+          // foreground push received
+        },
+        (action: any) => {
+          const data = action?.notification?.data;
+          if (data?.view) {
+            handleNavigate(data.view);
+          } else if (data?.orderId) {
+            handleNavigate('orders');
+          } else if (data?.negotiationId) {
+            handleNavigate('negotiations');
+          }
+        }
+      );
+    }
+  }, [user, authFetch]);
 
   // Handlers
   const handleNavigate = (view: string, param?: any) => {

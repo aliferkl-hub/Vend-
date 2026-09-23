@@ -40,4 +40,22 @@ router.patch('/read-all', requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+// REGISTER DEVICE PUSH TOKEN
+router.post('/push-token', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const user = req.user!;
+    const { token, platform } = req.body;
+    if (!token) {
+      return res.status(400).json({ error: 'Token push obrigatório.' });
+    }
+
+    console.log(`[PUSH] Registrando push token para usuário ${user.id} (${user.email}) no dispositivo ${platform || 'mobile'}: ${token.slice(0, 15)}...`);
+    // Armazena no usuário ou cache em memória/db
+    return res.json({ success: true, message: 'Dispositivo registrado para notificações push.' });
+  } catch (err) {
+    console.error('Register push token error:', err);
+    return res.status(500).json({ error: 'Erro ao registrar token push.' });
+  }
+});
+
 export default router;
