@@ -220,7 +220,8 @@ export const orders = pgTable('orders', {
   buyerId: integer('buyer_id').references(() => users.id).notNull(),
   sellerId: integer('seller_id').references(() => users.id).notNull(),
   status: text('status').notNull().default('AWAITING_PAYMENT'),
-  // 'AWAITING_PAYMENT' | 'PAID' | 'PREPARING' | 'READY_FOR_PICKUP' | 'IN_TRANSIT' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'CANCELLED'
+  // 'AWAITING_PAYMENT' | 'PAID' | 'PREPARING' | 'READY_FOR_PICKUP' | 'IN_TRANSIT' | 'OUT_FOR_DELIVERY' | 'WAITING_CONFIRMATION' | 'DELIVERED' | 'CANCELLED'
+  paymentStatus: text('payment_status').default('PENDING').notNull(), // 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'REFUNDED'
   totalGrossCents: integer('total_gross_cents').notNull(),
   commissionCents: integer('commission_cents').notNull(),
   sellerNetCents: integer('seller_net_cents').notNull(),
@@ -231,8 +232,15 @@ export const orders = pgTable('orders', {
   deliveryCode: text('delivery_code').notNull(), // 4 digits e.g. "4827"
   deliveryCodeUsed: boolean('delivery_code_used').default(false).notNull(),
   deliveryAttempts: integer('delivery_attempts').default(0).notNull(),
+  payoutStatus: text('payout_status').default('PENDING_DELIVERY_CONFIRMATION').notNull(), // 'PENDING_DELIVERY_CONFIRMATION' | 'AVAILABLE_FOR_PAYOUT' | 'REQUESTED' | 'PAID' | 'RELEASED' | 'REFUNDED' | 'CANCELLED'
+  payoutReleasedAt: timestamp('payout_released_at'),
+  payoutRequestedAt: timestamp('payout_requested_at'),
+  payoutCompletedAt: timestamp('payout_completed_at'),
+  mpPaymentId: text('mp_payment_id'),
+  confirmedByUserId: integer('confirmed_by_user_id').references(() => users.id),
   paidAt: timestamp('paid_at'),
   deliveredAt: timestamp('delivered_at'),
+  deliveryConfirmedAt: timestamp('delivery_confirmed_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -249,6 +257,7 @@ export const orderItems = pgTable('order_items', {
   quantity: integer('quantity').default(1).notNull(),
   subtotalCents: integer('subtotal_cents').notNull(),
   imageUrl: text('image_url'),
+  variations: text('variations'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -315,6 +324,11 @@ export const commissions = pgTable('commissions', {
   commissionCents: integer('commission_cents').notNull(),
   sellerNetAmountCents: integer('seller_net_amount_cents').notNull(),
   planNameAtSale: text('plan_name_at_sale').notNull(),
+  payoutStatus: text('payout_status').default('PENDING').notNull(), // 'PENDING' | 'RELEASED' | 'REFUNDED' | 'CANCELLED'
+  payoutReleasedAt: timestamp('payout_released_at'),
+  mpPaymentId: text('mp_payment_id'),
+  paidAt: timestamp('paid_at'),
+  deliveredAt: timestamp('delivered_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -421,6 +435,75 @@ export const appSettings = pgTable('app_settings', {
   key: text('key').notNull().unique(),
   value: text('value').notNull(),
   description: text('description'),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// 27. SELLER_PAYOUT_ACCOUNTS
+export const sellerPayoutAccounts = pgTable('seller_payout_accounts', {
+  id: serial('id').primaryKey(),
+  sellerId: integer('seller_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  accountType: text('account_type').notNull().default('PIX'), // 'PIX' | 'BANK_ACCOUNT'
+  pixKeyType: text('pix_key_type'), // 'CPF' | 'CNPJ' | 'EMAIL' | 'PHONE' | 'EVP'
+  pixKey: text('pix_key'),
+  bankCode: text('bank_code'),
+  bankName: text('bank_name'),
+  agency: text('agency'),
+  accountNumber: text('account_number'),
+  accountTypeDetail: text('account_type_detail'), // 'CORRENTE' | 'POUPANCA'
+  holderName: text('holder_name').notNull(),
+  holderDocument: text('holder_document').notNull(), // CPF or CNPJ
+  status: text('status').notNull().default('ACTIVE'), // 'ACTIVE' | 'PENDING' | 'INACTIVE'
+  isVerified: boolean('is_verified').default(true).notNull(),
+  verifiedAt: timestamp('verified_at').defaultNow(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// 28. PAYOUT_REQUESTS
+export const payoutRequests = pgTable('payout_requests', {
+  id: serial('id').primaryKey(),
+  requestNumber: text('request_number').notNull().unique(),
+  sellerId: integer('seller_id').references(() => users.id).notNull(),
+  payoutAccountId: integer('payout_account_id').references(() => sellerPayoutAccounts.id),
+  amountCents: integer('amount_cents').notNull(),
+  feeCents: integer('fee_cents').default(0).notNull(),
+  netAmountCents: integer('net_amount_cents').notNull(),
+  status: text('status').notNull().default('REQUESTED'), // 'REQUESTED' | 'PROCESSING' | 'PAID' | 'REJECTED' | 'CANCELLED'
+  receiptSnapshot: text('receipt_snapshot'), // JSON string of account info
+  orderIds: text('order_ids'), // JSON string array of order IDs
+  processedByUserId: integer('processed_by_user_id').references(() => users.id),
+  paymentProofUrl: text('payment_proof_url'),
+  notes: text('notes'),
+  requestedAt: timestamp('requested_at').defaultNow().notNull(),
+  processedAt: timestamp('processed_at'),
+  paidAt: timestamp('paid_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// 29. FINANCIAL_LEDGER (TRANSACTION AUDIT & RECONCILIATION)
+export const financialLedger = pgTable('financial_ledger', {
+  id: serial('id').primaryKey(),
+  transactionNumber: text('transaction_number').notNull().unique(),
+  orderId: integer('order_id').references(() => orders.id).notNull(),
+  orderNumber: text('order_number').notNull(),
+  paymentId: integer('payment_id').references(() => payments.id),
+  buyerId: integer('buyer_id').references(() => users.id).notNull(),
+  sellerId: integer('seller_id').references(() => users.id).notNull(),
+  grossAmountCents: integer('gross_amount_cents').notNull(),
+  platformFeeCents: integer('platform_fee_cents').notNull(),
+  sellerAmountCents: integer('seller_amount_cents').notNull(),
+  paymentStatus: text('payment_status').notNull().default('PENDING'), // 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'REFUNDED'
+  orderStatus: text('order_status').notNull().default('AWAITING_PAYMENT'), // 'AWAITING_PAYMENT' | 'PAID' | 'PREPARING' | 'IN_TRANSIT' | 'WAITING_CONFIRMATION' | 'DELIVERED' | 'CANCELLED'
+  payoutStatus: text('payout_status').notNull().default('PENDING_DELIVERY_CONFIRMATION'), // 'PENDING_DELIVERY_CONFIRMATION' | 'AVAILABLE_FOR_PAYOUT' | 'REQUESTED' | 'PAID' | 'CANCELLED' | 'REFUNDED'
+  approvedAt: timestamp('approved_at'),
+  deliveryConfirmedAt: timestamp('delivery_confirmed_at'),
+  payoutRequestedAt: timestamp('payout_requested_at'),
+  payoutCompletedAt: timestamp('payout_completed_at'),
+  payoutRequestId: integer('payout_request_id').references(() => payoutRequests.id),
+  mpPaymentId: text('mp_payment_id'),
+  cancellationReason: text('cancellation_reason'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 

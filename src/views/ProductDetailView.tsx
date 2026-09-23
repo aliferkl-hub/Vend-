@@ -15,7 +15,7 @@ import {
   ZoomIn,
   X,
 } from 'lucide-react';
-import { Product } from '../types.ts';
+import { Product, DirectBuyIntent } from '../types.ts';
 import { useCart } from '../context/CartContext.tsx';
 import { useAuth } from '../context/AuthContext.tsx';
 import { NegotiationModal } from '../components/NegotiationModal.tsx';
@@ -23,7 +23,7 @@ import { NegotiationModal } from '../components/NegotiationModal.tsx';
 interface ProductDetailViewProps {
   product: Product;
   onBack: () => void;
-  onBuyNow: (product: Product) => void;
+  onBuyNow: (intent: DirectBuyIntent) => void;
   onNavigateToStore?: (slug: string) => void;
   onNegotiationStarted: (negotiationId: number) => void;
 }
@@ -106,22 +106,33 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
       return;
     }
 
-    addItem({
+    const qty = 1;
+    const subtotal = product.priceCents * qty;
+    const initialDeliveryType: 'SHIPPING' | 'PICKUP' = product.offersDelivery ? 'SHIPPING' : 'PICKUP';
+    const shippingFee = initialDeliveryType === 'SHIPPING' ? 1490 : 0;
+
+    const intent: DirectBuyIntent = {
+      intentId: `BUY_NOW_${Date.now()}_${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
       productId: product.id,
-      type: 'PRODUCT',
-      title: product.name,
-      name: product.name,
-      priceCents: product.priceCents,
-      price: product.priceCents / 100,
-      quantity: 1,
-      imageUrl: product.imageUrl,
-      image: product.imageUrl,
       sellerId: product.sellerId,
       sellerName: product.seller?.name || 'Vendedor VEND+',
-      stock: product.stock,
-    });
+      buyerId: user?.id,
+      name: product.name,
+      title: product.name,
+      image: product.imageUrl,
+      imageUrl: product.imageUrl,
+      unitPriceCents: product.priceCents,
+      priceCents: product.priceCents,
+      quantity: qty,
+      variations: null,
+      subtotalCents: subtotal,
+      deliveryType: initialDeliveryType,
+      shippingFeeCents: shippingFee,
+      totalCents: subtotal + shippingFee,
+      createdAt: new Date().toISOString(),
+    };
 
-    onBuyNow(product);
+    onBuyNow(intent);
   };
 
   const handleStartOffer = async (offerCents: number, message: string): Promise<boolean> => {

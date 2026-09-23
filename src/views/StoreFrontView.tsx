@@ -18,9 +18,11 @@ import {
   Plus,
   Minus,
   Check,
+  Zap,
 } from 'lucide-react';
 import { useCart } from '../context/CartContext.tsx';
 import { ResponsiveProductImage } from '../components/ResponsiveProductImage.tsx';
+import { DirectBuyIntent } from '../types.ts';
 
 interface StoreFrontViewProps {
   storeSlug: string;
@@ -503,29 +505,65 @@ export const StoreFrontView: React.FC<StoreFrontViewProps> = ({ storeSlug, onNav
                       </button>
                     </div>
                   ) : (
-                    <button
-                      onClick={() => {
-                        addItem({
-                          productId: selectedProduct.id,
-                          type: 'PRODUCT',
-                          title: selectedProduct.name,
-                          name: selectedProduct.name,
-                          priceCents: selectedProduct.priceCents,
-                          price: selectedProduct.priceCents / 100,
-                          imageUrl: selectedProduct.imageUrl,
-                          image: selectedProduct.imageUrl,
-                          sellerId: selectedProduct.sellerId || storeData?.userId || storeData?.id,
-                          sellerName: storeData?.name || 'Loja Parceira',
-                          stock: selectedProduct.stock,
-                          quantity: 1,
-                        });
-                        setSelectedProduct(null);
-                      }}
-                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-sm transition"
-                    >
-                      <ShoppingBag className="w-4 h-4" />
-                      Comprar Agora (Adicionar ao Carrinho)
-                    </button>
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => {
+                          const prod = selectedProduct;
+                          const qty = 1;
+                          const subtotal = prod.priceCents * qty;
+                          const initialDeliveryType: 'SHIPPING' | 'PICKUP' = prod.offersDelivery ? 'SHIPPING' : 'PICKUP';
+                          const shippingFee = initialDeliveryType === 'SHIPPING' ? 1490 : 0;
+                          const intent: DirectBuyIntent = {
+                            intentId: `BUY_NOW_${Date.now()}_${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+                            productId: prod.id,
+                            sellerId: prod.sellerId || storeData?.userId || storeData?.id,
+                            sellerName: storeData?.name || 'Loja Parceira',
+                            name: prod.name,
+                            title: prod.name,
+                            image: prod.imageUrl,
+                            imageUrl: prod.imageUrl,
+                            unitPriceCents: prod.priceCents,
+                            priceCents: prod.priceCents,
+                            quantity: qty,
+                            variations: null,
+                            subtotalCents: subtotal,
+                            deliveryType: initialDeliveryType,
+                            shippingFeeCents: shippingFee,
+                            totalCents: subtotal + shippingFee,
+                            createdAt: new Date().toISOString(),
+                          };
+                          setSelectedProduct(null);
+                          onNavigate('buy-now', intent);
+                        }}
+                        className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-sm transition cursor-pointer"
+                      >
+                        <Zap className="w-4 h-4" />
+                        Comprar Agora (Direto ao Pagamento)
+                      </button>
+                      <button
+                        onClick={() => {
+                          addItem({
+                            productId: selectedProduct.id,
+                            type: 'PRODUCT',
+                            title: selectedProduct.name,
+                            name: selectedProduct.name,
+                            priceCents: selectedProduct.priceCents,
+                            price: selectedProduct.priceCents / 100,
+                            imageUrl: selectedProduct.imageUrl,
+                            image: selectedProduct.imageUrl,
+                            sellerId: selectedProduct.sellerId || storeData?.userId || storeData?.id,
+                            sellerName: storeData?.name || 'Loja Parceira',
+                            stock: selectedProduct.stock,
+                            quantity: 1,
+                          });
+                          setSelectedProduct(null);
+                        }}
+                        className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition cursor-pointer"
+                      >
+                        <ShoppingBag className="w-4 h-4" />
+                        Adicionar ao Carrinho
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>

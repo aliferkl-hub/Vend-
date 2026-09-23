@@ -14,6 +14,7 @@ import {
   auditLogs,
   negotiations,
   addresses,
+  financialLedger,
 } from '../db/schema.ts';
 import { eq, and, or, desc } from 'drizzle-orm';
 import { AuthRequest, requireAuth } from '../middleware/auth.ts';
@@ -44,7 +45,7 @@ router.post('/checkout', requireAuth, async (req: AuthRequest, res) => {
     }
 
     if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: 'O carrinho está vazio.' });
+      return res.status(400).json({ error: 'Nenhum item informado para a compra.' });
     }
 
     // Process and validate items from database
@@ -59,6 +60,7 @@ router.post('/checkout', requireAuth, async (req: AuthRequest, res) => {
       quantity: number;
       subtotalCents: number;
       imageUrl: string | null;
+      variations?: any;
     }> = [];
 
     // If checkout is based on an accepted negotiation
@@ -92,6 +94,9 @@ router.post('/checkout', requireAuth, async (req: AuthRequest, res) => {
         if (p.sellerId === buyer.id) {
           return res.status(400).json({ error: 'Você não pode comprar seu próprio produto.' });
         }
+        if (p.priceCents <= 0) {
+          return res.status(400).json({ error: 'Preço do produto inválido ou zerado.' });
+        }
         if (sellerId && sellerId !== p.sellerId) {
           return res.status(400).json({
             error: 'No momento, cada pedido no VEND+ deve conter itens de apenas um vendedor.',
@@ -101,6 +106,9 @@ router.post('/checkout', requireAuth, async (req: AuthRequest, res) => {
 
         // Use negotiated price if applicable
         const unitPrice = negotiationAgreedPriceCents || p.priceCents;
+        if (unitPrice <= 0) {
+          return res.status(400).json({ error: 'Valor do produto deve ser superior a zero.' });
+        }
         const subtotal = unitPrice * qty;
         totalGrossCents += subtotal;
 
@@ -112,6 +120,7 @@ router.post('/checkout', requireAuth, async (req: AuthRequest, res) => {
           quantity: qty,
           subtotalCents: subtotal,
           imageUrl: p.imageUrl,
+          variations: it.variations || null,
         });
       } else if (it.serviceId) {
         const [s] = await db.select().from(services).where(eq(services.id, parseInt(it.serviceId))).limit(1);
@@ -121,9 +130,15 @@ router.post('/checkout', requireAuth, async (req: AuthRequest, res) => {
         if (s.providerId === buyer.id) {
           return res.status(400).json({ error: 'Você não pode contratar seu próprio serviço.' });
         }
+        if (s.priceCents <= 0) {
+          return res.status(400).json({ error: 'Preço do serviço inválido ou zerado.' });
+        }
         sellerId = s.providerId;
 
         const unitPrice = negotiationAgreedPriceCents || s.priceCents;
+        if (unitPrice <= 0) {
+          return res.status(400).json({ error: 'Valor do serviço deve ser superior a zero.' });
+        }
         const subtotal = unitPrice * qty;
         totalGrossCents += subtotal;
 
@@ -135,12 +150,17 @@ router.post('/checkout', requireAuth, async (req: AuthRequest, res) => {
           quantity: qty,
           subtotalCents: subtotal,
           imageUrl: s.imageUrl,
+          variations: it.variations || null,
         });
       }
     }
 
     if (!sellerId) {
-      return res.status(400).json({ error: 'Vendedor não identificado.' });
+      return res.status(400).json({ error: 'Vendedor não identificado ou pedido sem itens válidos.' });
+    }
+
+    if (totalGrossCents <= 0) {
+      return res.status(400).json({ error: 'O valor dos produtos não pode ser R$ 0,00.' });
     }
 
     // Fetch seller's plan to determine commission
@@ -170,6 +190,7 @@ router.post('/checkout', requireAuth, async (req: AuthRequest, res) => {
         buyerId: buyer.id,
         sellerId,
         status: 'AWAITING_PAYMENT',
+        paymentStatus: 'PENDING',
         totalGrossCents: finalTotalWithShipping,
         commissionCents,
         sellerNetCents,
@@ -179,6 +200,7 @@ router.post('/checkout', requireAuth, async (req: AuthRequest, res) => {
         deliveryCode,
         deliveryCodeUsed: false,
         deliveryAttempts: 0,
+        payoutStatus: 'PENDING_DELIVERY_CONFIRMATION',
       })
       .returning();
 
@@ -194,6 +216,7 @@ router.post('/checkout', requireAuth, async (req: AuthRequest, res) => {
         quantity: item.quantity,
         subtotalCents: item.subtotalCents,
         imageUrl: item.imageUrl,
+        variations: item.variations ? (typeof item.variations === 'string' ? item.variations : JSON.stringify(item.variations)) : null,
       });
     }
 
@@ -206,6 +229,22 @@ router.post('/checkout', requireAuth, async (req: AuthRequest, res) => {
       commissionCents,
       sellerNetAmountCents: sellerNetCents,
       planNameAtSale: plan?.name || 'FREE',
+      payoutStatus: 'PENDING_DELIVERY_CONFIRMATION',
+    });
+
+    // Record initial financial ledger entry
+    await db.insert(financialLedger).values({
+      transactionNumber: `TX-${orderNumber}`,
+      orderId: newOrder.id,
+      orderNumber,
+      buyerId: buyer.id,
+      sellerId,
+      grossAmountCents: finalTotalWithShipping,
+      platformFeeCents: commissionCents,
+      sellerAmountCents: sellerNetCents,
+      paymentStatus: 'PENDING',
+      orderStatus: 'AWAITING_PAYMENT',
+      payoutStatus: 'PENDING_DELIVERY_CONFIRMATION',
     });
 
     // Record delivery code
@@ -404,11 +443,34 @@ router.patch('/:id/status', requireAuth, async (req: AuthRequest, res) => {
       return res.status(400).json({ error: 'Transição de status não permitida.' });
     }
 
+    // If order was already delivered, cannot cancel
+    if (order.status === 'DELIVERED') {
+      return res.status(400).json({ error: 'Pedidos já entregues e confirmados com código não podem ser cancelados diretamente.' });
+    }
+
+    const now = new Date();
+    const updatePayload: any = { status, updatedAt: now };
+
+    if (status === 'CANCELLED') {
+      updatePayload.payoutStatus = 'CANCELLED';
+      updatePayload.paymentStatus = 'CANCELLED';
+    }
+
     const [updated] = await db
       .update(orders)
-      .set({ status, updatedAt: new Date() })
+      .set(updatePayload)
       .where(eq(orders.id, order.id))
       .returning();
+
+    // Sync financialLedger
+    await db
+      .update(financialLedger)
+      .set({
+        orderStatus: status,
+        ...(status === 'CANCELLED' ? { payoutStatus: 'CANCELLED', paymentStatus: 'CANCELLED', cancellationReason: 'Cancelamento pelo vendedor/administrador' } : {}),
+        updatedAt: now,
+      })
+      .where(eq(financialLedger.orderId, order.id));
 
     await db.insert(notifications).values({
       userId: order.buyerId,

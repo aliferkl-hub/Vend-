@@ -27,7 +27,7 @@ import { CreateStoreAIView } from './views/CreateStoreAIView.tsx';
 import { MyStoreView } from './views/MyStoreView.tsx';
 import { StoreFrontView } from './views/StoreFrontView.tsx';
 
-import { Product, ServiceItem, Category, Negotiation } from './types.ts';
+import { Product, ServiceItem, Category, Negotiation, DirectBuyIntent } from './types.ts';
 import nativeBridge from './services/nativeBridge.ts';
 import { App as CapApp } from '@capacitor/app';
 
@@ -52,6 +52,27 @@ const MainApp: React.FC = () => {
   const [selectedCategorySlug, setSelectedCategorySlug] = useState<string>('');
   const [storeSlug, setStoreSlug] = useState<string>('');
 
+  // Selected item states
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [selectedService, setSelectedService] = useState<ServiceItem | null>(null);
+  const [directBuyIntent, setDirectBuyIntent] = useState<DirectBuyIntent | null>(() => {
+    try {
+      const saved = sessionStorage.getItem('vend_direct_buy_intent');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [checkoutNegotiation, setCheckoutNegotiation] = useState<Negotiation | null>(() => {
+    try {
+      const saved = sessionStorage.getItem('vend_checkout_negotiation');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
   // Check URL query parameters for direct store view (?loja=slug) and payment return
   useEffect(() => {
     try {
@@ -64,6 +85,8 @@ const MainApp: React.FC = () => {
       const payment = urlParams.get('payment') || urlParams.get('status') || urlParams.get('collection_status');
       if (payment === 'success' || payment === 'approved') {
         clearCart();
+        setDirectBuyIntent(null);
+        sessionStorage.removeItem('vend_direct_buy_intent');
         sessionStorage.removeItem('vend_checkout_negotiation');
         setCurrentView('orders');
       }
@@ -71,19 +94,6 @@ const MainApp: React.FC = () => {
       // ignore
     }
   }, [clearCart]);
-
-  // Selected item states
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [selectedService, setSelectedService] = useState<ServiceItem | null>(null);
-  const [checkoutNegotiation, setCheckoutNegotiation] = useState<Negotiation | null>(() => {
-    try {
-      const saved = sessionStorage.getItem('vend_checkout_negotiation');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
 
   // Modals
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
@@ -188,6 +198,17 @@ const MainApp: React.FC = () => {
     if (view === 'store-front' && typeof param === 'string') {
       setStoreSlug(param);
     }
+    if (view === 'buy-now' && param) {
+      setDirectBuyIntent(param);
+      setCheckoutNegotiation(null);
+      try {
+        sessionStorage.setItem('vend_direct_buy_intent', JSON.stringify(param));
+        sessionStorage.removeItem('vend_checkout_negotiation');
+      } catch {}
+      setCurrentView('checkout');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
     if (view === 'sell') {
       if (param && typeof param === 'object') {
         setEditingProduct(param);
@@ -220,25 +241,11 @@ const MainApp: React.FC = () => {
     handleNavigate('services');
   };
 
-  const handleBuyNow = (prod: Product) => {
-    // Add product to cart directly to guarantee persistence with all required fields
-    addItem({
-      productId: prod.id,
-      type: 'PRODUCT',
-      title: prod.name,
-      name: prod.name,
-      priceCents: prod.priceCents,
-      price: prod.priceCents / 100,
-      quantity: 1,
-      imageUrl: prod.imageUrl,
-      image: prod.imageUrl,
-      sellerId: prod.sellerId,
-      sellerName: prod.seller?.name || 'Vendedor VEND+',
-      stock: prod.stock,
-    });
-    setSelectedProduct(prod);
+  const handleBuyNow = (intent: DirectBuyIntent) => {
+    setDirectBuyIntent(intent);
     setCheckoutNegotiation(null);
     try {
+      sessionStorage.setItem('vend_direct_buy_intent', JSON.stringify(intent));
       sessionStorage.removeItem('vend_checkout_negotiation');
     } catch {}
     handleNavigate('checkout');
@@ -353,8 +360,25 @@ const MainApp: React.FC = () => {
         {currentView === 'checkout' && (
           <CheckoutView
             negotiationItem={checkoutNegotiation}
+            directBuyIntent={directBuyIntent}
+            onClearDirectBuy={() => {
+              setDirectBuyIntent(null);
+              try {
+                sessionStorage.removeItem('vend_direct_buy_intent');
+              } catch {}
+            }}
             onOrderCreated={handleOrderCreated}
-            onBack={() => setCurrentView('cart')}
+            onBack={() => {
+              if (directBuyIntent) {
+                setDirectBuyIntent(null);
+                try {
+                  sessionStorage.removeItem('vend_direct_buy_intent');
+                } catch {}
+                setCurrentView(selectedProduct ? 'product-detail' : 'home');
+              } else {
+                setCurrentView('cart');
+              }
+            }}
           />
         )}
 

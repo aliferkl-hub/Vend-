@@ -138,6 +138,27 @@ export interface Store {
   };
 }
 
+export interface DirectBuyIntent {
+  intentId: string;
+  productId: number;
+  sellerId: number;
+  sellerName?: string;
+  buyerId?: number;
+  name: string;
+  title: string;
+  image: string;
+  imageUrl: string;
+  unitPriceCents: number;
+  priceCents: number;
+  quantity: number;
+  variations?: Record<string, any> | string | null;
+  subtotalCents: number;
+  deliveryType: 'SHIPPING' | 'PICKUP';
+  shippingFeeCents: number;
+  totalCents: number;
+  createdAt: string;
+}
+
 export interface CartItem {
   id: string; // generated unique id
   productId?: number;
@@ -169,6 +190,7 @@ export interface OrderItem {
   quantity: number;
   subtotalCents: number;
   imageUrl?: string | null;
+  variations?: Record<string, any> | string | null;
 }
 
 export interface Order {
@@ -183,6 +205,7 @@ export interface Order {
     | 'READY_FOR_PICKUP'
     | 'IN_TRANSIT'
     | 'OUT_FOR_DELIVERY'
+    | 'WAITING_CONFIRMATION'
     | 'DELIVERED'
     | 'CANCELLED';
   totalGrossCents: number;
@@ -195,6 +218,22 @@ export interface Order {
   deliveryCode: string;
   deliveryCodeUsed: boolean;
   deliveryAttempts: number;
+  payoutStatus?:
+    | 'PENDING'
+    | 'RELEASED'
+    | 'PENDING_DELIVERY_CONFIRMATION'
+    | 'AVAILABLE_FOR_PAYOUT'
+    | 'REQUESTED'
+    | 'PAID'
+    | 'REFUNDED'
+    | 'CANCELLED';
+  paymentStatus?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'REFUNDED';
+  payoutReleasedAt?: string | null;
+  payoutRequestedAt?: string | null;
+  payoutCompletedAt?: string | null;
+  deliveryConfirmedAt?: string | null;
+  mpPaymentId?: string | null;
+  confirmedByUserId?: number | null;
   paidAt?: string | null;
   deliveredAt?: string | null;
   createdAt: string;
@@ -269,3 +308,91 @@ export interface NotificationItem {
   isRead: boolean;
   createdAt: string;
 }
+
+export interface SellerPayoutAccount {
+  id: number;
+  sellerId: number;
+  accountType: 'PIX' | 'BANK_ACCOUNT';
+  pixKeyType?: 'CPF' | 'CNPJ' | 'EMAIL' | 'PHONE' | 'EVP' | null;
+  pixKey?: string | null;
+  bankCode?: string | null;
+  bankName?: string | null;
+  agency?: string | null;
+  accountNumber?: string | null;
+  accountTypeDetail?: 'CORRENTE' | 'POUPANCA' | null;
+  holderName: string;
+  holderDocument: string;
+  status: 'ACTIVE' | 'PENDING' | 'INACTIVE';
+  isVerified: boolean;
+  verifiedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PayoutRequest {
+  id: number;
+  requestNumber: string;
+  sellerId: number;
+  payoutAccountId?: number | null;
+  amountCents: number;
+  feeCents: number;
+  netAmountCents: number;
+  status: 'REQUESTED' | 'PROCESSING' | 'PAID' | 'REJECTED' | 'CANCELLED';
+  receiptSnapshot?: string | null;
+  orderIds?: string | null;
+  processedByUserId?: number | null;
+  paymentProofUrl?: string | null;
+  notes?: string | null;
+  requestedAt: string;
+  processedAt?: string | null;
+  paidAt?: string | null;
+  seller?: { id: number; name: string; email: string };
+  payoutAccount?: SellerPayoutAccount | null;
+}
+
+export interface FinancialLedgerEntry {
+  id: number;
+  transactionNumber: string;
+  orderId: number;
+  orderNumber: string;
+  paymentId?: number | null;
+  buyerId: number;
+  sellerId: number;
+  buyerName?: string;
+  sellerName?: string;
+  grossAmountCents: number;
+  platformFeeCents: number;
+  sellerAmountCents: number;
+  paymentStatus: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'REFUNDED';
+  orderStatus: string;
+  payoutStatus:
+    | 'PENDING_DELIVERY_CONFIRMATION'
+    | 'AVAILABLE_FOR_PAYOUT'
+    | 'REQUESTED'
+    | 'PAID'
+    | 'CANCELLED'
+    | 'REFUNDED';
+  approvedAt?: string | null;
+  deliveryConfirmedAt?: string | null;
+  payoutRequestedAt?: string | null;
+  payoutCompletedAt?: string | null;
+  payoutRequestId?: number | null;
+  mpPaymentId?: string | null;
+  cancellationReason?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SellerWalletSummary {
+  pendingBalanceCents: number;
+  availableBalanceCents: number;
+  totalPaidOutCents: number;
+  totalCommissionsCents: number;
+  totalGrossSalesCents: number;
+  pendingPayoutsCount: number;
+  completedPayoutsCount: number;
+  payoutAccount?: SellerPayoutAccount | null;
+  recentTransactions?: FinancialLedgerEntry[];
+  payoutRequests?: PayoutRequest[];
+}
+

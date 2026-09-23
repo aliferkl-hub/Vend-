@@ -23,6 +23,7 @@ import reviewRoutes from './src/server/reviewRoutes.ts';
 import favoriteRoutes from './src/server/favoriteRoutes.ts';
 import notificationRoutes from './src/server/notificationRoutes.ts';
 import addressRoutes from './src/server/addressRoutes.ts';
+import payoutRoutes from './src/server/payoutRoutes.ts';
 import { initializeDatabaseSeed } from './src/server/seedData.ts';
 import { runAccountMigration } from './src/server/accountMigration.ts';
 
@@ -88,6 +89,7 @@ async function startServer() {
   app.use('/api/favorites', favoriteRoutes);
   app.use('/api/notifications', notificationRoutes);
   app.use('/api/addresses', addressRoutes);
+  app.use('/api/payouts', payoutRoutes);
 
   // Initialize background database migration, seeds, and master owner
   try {

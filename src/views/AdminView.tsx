@@ -33,7 +33,7 @@ interface AdminViewProps {
 
 export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNavigate }) => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'PLANS' | 'FINANCE_PIX' | 'STORES' | 'PRODUCTS' | 'ORDERS' | 'USERS' | 'IMPORT'>('OVERVIEW');
+  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'PLANS' | 'FINANCE_PIX' | 'STORES' | 'PRODUCTS' | 'ORDERS' | 'USERS' | 'IMPORT' | 'PAYOUTS_CONCILIATION'>('OVERVIEW');
 
   const [metrics, setMetrics] = useState<any>(null);
   const [financial, setFinancial] = useState<any[]>([]);
@@ -42,6 +42,14 @@ export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNaviga
   const [productsList, setProductsList] = useState<any[]>([]);
   const [subscriptionsList, setSubscriptionsList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Financial Reconciliation & Payouts
+  const [payoutsData, setPayoutsData] = useState<any>(null);
+  const [payoutsLoading, setPayoutsLoading] = useState(false);
+  const [processingPayoutModal, setProcessingPayoutModal] = useState<any | null>(null);
+  const [proofUrlInput, setProofUrlInput] = useState('');
+  const [notesInput, setNotesInput] = useState('');
+  const [processingSubmitting, setProcessingSubmitting] = useState(false);
 
   // Mercado Pago Health & Configuration
   const [mpHealth, setMpHealth] = useState<any>(null);
@@ -58,6 +66,21 @@ export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNaviga
   const [importJson, setImportJson] = useState('');
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<string | null>(null);
+
+  const fetchPayoutsData = async () => {
+    setPayoutsLoading(true);
+    try {
+      const res = await fetch('/api/payouts/admin/reconciliation');
+      if (res.ok) {
+        const data = await res.json();
+        setPayoutsData(data);
+      }
+    } catch (err) {
+      console.error('Error fetching reconciliation:', err);
+    } finally {
+      setPayoutsLoading(false);
+    }
+  };
 
   const fetchAdminData = async () => {
     setLoading(true);
@@ -78,8 +101,8 @@ export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNaviga
       if (resProducts.ok) setProductsList(await resProducts.json());
       if (resSubs.ok) setSubscriptionsList(await resSubs.json());
 
-      // Fetch Mercado Pago health
-      await fetchMpHealth();
+      // Fetch Mercado Pago health and Reconciliation
+      await Promise.all([fetchMpHealth(), fetchPayoutsData()]);
     } catch (e) {
       console.error('Error fetching admin data:', e);
     } finally {
@@ -173,6 +196,40 @@ export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNaviga
   useEffect(() => {
     fetchAdminData();
   }, []);
+
+  const handleConfirmProcessPayout = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!processingPayoutModal) return;
+
+    setProcessingSubmitting(true);
+    try {
+      const res = await fetch('/api/payouts/admin/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          payoutRequestId: processingPayoutModal.id,
+          transferProofUrl: proofUrlInput.trim() || null,
+          notes: notesInput.trim() || null,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        alert('Repasse confirmado e registrado com sucesso no livro-razão financeiro!');
+        setProcessingPayoutModal(null);
+        setProofUrlInput('');
+        setNotesInput('');
+        fetchPayoutsData();
+        fetchAdminData();
+      } else {
+        alert(data.error || 'Erro ao processar repasse.');
+      }
+    } catch {
+      alert('Erro de conexão com o servidor.');
+    } finally {
+      setProcessingSubmitting(false);
+    }
+  };
 
   const handleClearDemoData = async () => {
     if (!window.confirm('ATENÇÃO MASTER OWNER: Deseja remover todos os produtos marcados como demonstração?')) {
@@ -324,6 +381,19 @@ export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNaviga
         >
           <DollarSign className="w-3.5 h-3.5" />
           <span>PIX & Mercado Pago</span>
+        </button>
+
+        <button
+          id="admin-tab-payouts-conciliation"
+          onClick={() => setActiveTab('PAYOUTS_CONCILIATION')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${
+            activeTab === 'PAYOUTS_CONCILIATION'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'bg-white text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          <ShieldCheck className="w-3.5 h-3.5" />
+          <span>Repasses & Conciliação ({payoutsData?.payoutRequests?.length ?? 0})</span>
         </button>
 
         <button
@@ -1347,6 +1417,385 @@ export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNaviga
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* TAB: REPASSES & CONCILIAÇÃO FINANCEIRA */}
+      {activeTab === 'PAYOUTS_CONCILIATION' && (
+        <div className="space-y-6">
+          {/* Header & Refresh */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
+            <div>
+              <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-indigo-600" />
+                <span>Conciliação Financeira & Proteção de Transações VEND+</span>
+              </h2>
+              <p className="text-xs text-slate-500">
+                Auditoria rigorosa: pagamentos Mercado Pago, retenções de segurança, liberações pós-código e liquidação de repasses aos vendedores.
+              </p>
+            </div>
+
+            <button
+              onClick={fetchPayoutsData}
+              disabled={payoutsLoading}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition self-start sm:self-auto cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${payoutsLoading ? 'animate-spin' : ''}`} />
+              <span>{payoutsLoading ? 'Atualizando...' : 'Atualizar Livro-Razão'}</span>
+            </button>
+          </div>
+
+          {/* Metric Cards Summary */}
+          {payoutsData?.summary && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs space-y-1">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                  Total Bruto em Transações
+                </span>
+                <div className="text-2xl font-black text-slate-950">
+                  {((payoutsData.summary.totalGrossCents ?? 0) / 100).toLocaleString('pt-BR', {
+                    style: 'currency',
+                    currency: 'BRL',
+                  })}
+                </div>
+                <p className="text-[11px] text-slate-500">Volume total transacionado na plataforma</p>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-amber-200/80 p-4 shadow-2xs bg-amber-50/20 space-y-1">
+                <span className="text-[11px] font-bold text-amber-700 uppercase tracking-wider block">
+                  Retido com Segurança (Pendente)
+                </span>
+                <div className="text-2xl font-black text-amber-600">
+                  {((payoutsData.summary.totalPendingDeliveryCents ?? 0) / 100).toLocaleString('pt-BR', {
+                    style: 'currency',
+                    currency: 'BRL',
+                  })}
+                </div>
+                <p className="text-[11px] text-amber-700/80">Aguardando comprador validar código</p>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-emerald-200/80 p-4 shadow-2xs bg-emerald-50/20 space-y-1">
+                <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider block">
+                  Liberado para Repasse
+                </span>
+                <div className="text-2xl font-black text-emerald-600">
+                  {((payoutsData.summary.totalAvailableForPayoutCents ?? 0) / 100).toLocaleString('pt-BR', {
+                    style: 'currency',
+                    currency: 'BRL',
+                  })}
+                </div>
+                <p className="text-[11px] text-emerald-700/80">Entrega validada com sucesso pelo cliente</p>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-indigo-200/80 p-4 shadow-2xs bg-indigo-50/20 space-y-1">
+                <span className="text-[11px] font-bold text-indigo-700 uppercase tracking-wider block">
+                  Comissão VEND+ Retida (7% / 4%)
+                </span>
+                <div className="text-2xl font-black text-indigo-600">
+                  {((payoutsData.summary.totalPlatformFeesCents ?? 0) / 100).toLocaleString('pt-BR', {
+                    style: 'currency',
+                    currency: 'BRL',
+                  })}
+                </div>
+                <p className="text-[11px] text-indigo-700/80">Receita retida automaticamente</p>
+              </div>
+            </div>
+          )}
+
+          {/* SECTION 1: TABELA DE SOLICITAÇÕES DE REPASSE DOS VENDEDORES */}
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-2xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-emerald-600" />
+                  <span>Fila de Solicitações de Repasse</span>
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Vendedores que solicitaram a transferência do saldo disponível para Pix ou conta bancária.
+                </p>
+              </div>
+            </div>
+
+            {(!payoutsData?.payoutRequests || payoutsData.payoutRequests.length === 0) ? (
+              <p className="text-xs text-slate-500 text-center py-8">
+                Nenhuma solicitação de repasse registrada até o momento.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase tracking-wider">
+                      <th className="pb-3">Código</th>
+                      <th className="pb-3">Vendedor</th>
+                      <th className="pb-3">Dados de Destino</th>
+                      <th className="pb-3">Valor Líquido</th>
+                      <th className="pb-3">Data Solicitação</th>
+                      <th className="pb-3">Status</th>
+                      <th className="pb-3 text-right">Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {payoutsData.payoutRequests.map((req: any) => {
+                      const snapshot = req.accountSnapshot ? (typeof req.accountSnapshot === 'string' ? JSON.parse(req.accountSnapshot) : req.accountSnapshot) : null;
+                      const isPending = req.status === 'REQUESTED' || req.status === 'PROCESSING';
+
+                      return (
+                        <tr key={req.id} className="hover:bg-slate-50">
+                          <td className="py-3 font-mono font-bold text-slate-900">{req.requestNumber}</td>
+                          <td className="py-3 font-bold text-slate-800">
+                            {req.seller?.name || `Vendedor #${req.sellerId}`}
+                            <span className="block text-[11px] font-normal text-slate-400">{req.seller?.email}</span>
+                          </td>
+                          <td className="py-3 text-slate-600">
+                            {snapshot ? (
+                              snapshot.accountType === 'PIX' ? (
+                                <div>
+                                  <span className="font-bold text-emerald-700">PIX ({snapshot.pixKeyType}):</span> {snapshot.pixKey}
+                                  <span className="block text-[10px] text-slate-400">Titular: {snapshot.holderName} (Doc: {snapshot.holderDocument})</span>
+                                </div>
+                              ) : (
+                                <div>
+                                  <span className="font-bold text-sky-700">{snapshot.bankName}:</span> Ag {snapshot.agency} • CC {snapshot.accountNumber}
+                                  <span className="block text-[10px] text-slate-400">Titular: {snapshot.holderName} (Doc: {snapshot.holderDocument})</span>
+                                </div>
+                              )
+                            ) : (
+                              'Dados não informados'
+                            )}
+                          </td>
+                          <td className="py-3 font-black text-emerald-700 text-sm">
+                            {(req.netAmountCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                          </td>
+                          <td className="py-3 text-slate-500">
+                            {new Date(req.requestedAt).toLocaleDateString('pt-BR')} às{' '}
+                            {new Date(req.requestedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </td>
+                          <td className="py-3">
+                            {req.status === 'PAID' ? (
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                ✓ Pago na Conta
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                Aguardando Transferência
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 text-right">
+                            {isPending ? (
+                              <button
+                                onClick={() => {
+                                  setProcessingPayoutModal(req);
+                                  setProofUrlInput('');
+                                  setNotesInput('');
+                                }}
+                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs transition shadow-2xs cursor-pointer"
+                              >
+                                Baixar Repasse
+                              </button>
+                            ) : (
+                              <span className="text-slate-400 text-[11px] font-semibold">Liquidado</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* SECTION 2: AUDITORIA DO LIVRO-RAZÃO FINANCEIRO (financialLedger) */}
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-2xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                  <FileSpreadsheet className="w-5 h-5 text-indigo-600" />
+                  <span>Livro-Razão Financeiro & Auditoria de Pedidos</span>
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Rastreamento completo: status de pagamento MP, confirmação física de entrega e liberação de saldo.
+                </p>
+              </div>
+            </div>
+
+            {(!payoutsData?.ledger || payoutsData.ledger.length === 0) ? (
+              <p className="text-xs text-slate-500 text-center py-8">
+                Nenhuma entrada registrada no livro-razão financeiro.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase tracking-wider">
+                      <th className="pb-3">Transação</th>
+                      <th className="pb-3">Pedido</th>
+                      <th className="pb-3">Vendedor / Comprador</th>
+                      <th className="pb-3">Bruto</th>
+                      <th className="pb-3">Taxa VEND+</th>
+                      <th className="pb-3">Líquido Vendedor</th>
+                      <th className="pb-3">Pagamento MP</th>
+                      <th className="pb-3">Status Pedido</th>
+                      <th className="pb-3">Status Repasse</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {payoutsData.ledger.map((entry: any) => (
+                      <tr key={entry.id} className="hover:bg-slate-50">
+                        <td className="py-3 font-mono font-bold text-slate-900">{entry.transactionNumber}</td>
+                        <td className="py-3 font-mono text-slate-700">{entry.orderNumber}</td>
+                        <td className="py-3 text-slate-700">
+                          <div>
+                            <span className="font-semibold text-slate-900">Vend: {entry.seller?.name || `#${entry.sellerId}`}</span>
+                            <span className="block text-[11px] text-slate-400">Comp: {entry.buyer?.name || `#${entry.buyerId}`}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 font-bold text-slate-900">
+                          {(entry.grossAmountCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </td>
+                        <td className="py-3 font-bold text-rose-600">
+                          {(entry.platformFeeCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </td>
+                        <td className="py-3 font-bold text-emerald-700">
+                          {(entry.sellerAmountCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </td>
+                        <td className="py-3">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            entry.paymentStatus === 'APPROVED'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : entry.paymentStatus === 'PENDING'
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-rose-100 text-rose-800'
+                          }`}>
+                            {entry.paymentStatus}
+                          </span>
+                        </td>
+                        <td className="py-3">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
+                            {entry.orderStatus}
+                          </span>
+                        </td>
+                        <td className="py-3">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            entry.payoutStatus === 'AVAILABLE_FOR_PAYOUT' || entry.payoutStatus === 'RELEASED'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : entry.payoutStatus === 'PAID'
+                              ? 'bg-emerald-600 text-white'
+                              : entry.payoutStatus === 'CANCELLED'
+                              ? 'bg-rose-100 text-rose-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {entry.payoutStatus === 'AVAILABLE_FOR_PAYOUT'
+                              ? 'Liberado p/ Repasse'
+                              : entry.payoutStatus === 'PENDING_DELIVERY_CONFIRMATION'
+                              ? 'Retido em Garantia'
+                              : entry.payoutStatus === 'PAID'
+                              ? 'Repasse Concluído'
+                              : entry.payoutStatus}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL BAIXAR / LIQUIDAR REPASSE (ADMIN) */}
+      {processingPayoutModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 relative my-8">
+            <button
+              onClick={() => setProcessingPayoutModal(null)}
+              className="absolute top-5 right-5 text-slate-400 hover:text-slate-700 p-1.5 rounded-full hover:bg-slate-100 transition"
+              title="Fechar"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="space-y-1">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold">
+                <CheckCircle className="w-4 h-4 text-indigo-600" />
+                <span>Liquidação de Repasse aos Vendedores</span>
+              </div>
+              <h2 className="text-xl font-black text-slate-950 pt-1">
+                Processar Repasse #{processingPayoutModal.requestNumber}
+              </h2>
+              <p className="text-xs text-slate-500">
+                Confirme a transferência bancária/Pix para o vendedor e registre a liquidação.
+              </p>
+            </div>
+
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2 text-xs">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500">Vendedor:</span>
+                <strong className="text-slate-900">{processingPayoutModal.seller?.name || `#${processingPayoutModal.sellerId}`}</strong>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500">Valor Líquido:</span>
+                <strong className="text-emerald-700 text-sm">
+                  {(processingPayoutModal.netAmountCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                </strong>
+              </div>
+              {processingPayoutModal.accountSnapshot && (
+                <div className="pt-2 border-t border-slate-200">
+                  <span className="text-slate-500 block">Conta de Destino:</span>
+                  <p className="font-semibold text-slate-800 text-[11px] mt-0.5">
+                    {typeof processingPayoutModal.accountSnapshot === 'string'
+                      ? processingPayoutModal.accountSnapshot
+                      : JSON.stringify(processingPayoutModal.accountSnapshot)}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <form onSubmit={handleConfirmProcessPayout} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Comprovante / ID da Transferência (Opcional)
+                </label>
+                <input
+                  type="text"
+                  value={proofUrlInput}
+                  onChange={(e) => setProofUrlInput(e.target.value)}
+                  placeholder="URL ou código da transação Pix / TED"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Notas Internas de Auditoria</label>
+                <textarea
+                  rows={2}
+                  value={notesInput}
+                  onChange={(e) => setNotesInput(e.target.value)}
+                  placeholder="Ex: Transferido via Pix banco Inter às 14h30"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setProcessingPayoutModal(null)}
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={processingSubmitting}
+                  className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-black rounded-xl shadow-md transition cursor-pointer"
+                >
+                  {processingSubmitting ? 'Registrando...' : 'Confirmar e Liquidar'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

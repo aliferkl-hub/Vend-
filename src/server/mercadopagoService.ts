@@ -1,5 +1,5 @@
 import { db } from '../db/index.ts';
-import { appSettings, payments, orders, subscriptions, users, notifications, auditLogs, plans } from '../db/schema.ts';
+import { appSettings, payments, orders, subscriptions, users, notifications, auditLogs, plans, financialLedger, commissions } from '../db/schema.ts';
 import { eq, desc } from 'drizzle-orm';
 import crypto from 'crypto';
 
@@ -568,6 +568,31 @@ export async function settlePayment(
     })
     .where(eq(payments.id, dbPayment.id));
 
+  // IF CANCELLED OR REFUNDED: Protect against fraudulent payouts
+  if ((newDbStatus === 'CANCELLED' || newDbStatus === 'REFUNDED') && dbPayment.orderId) {
+    console.log(`[MercadoPago] Pagamento #${dbPayment.id} ${newDbStatus}! Bloqueando repasse e cancelando pedido #${dbPayment.orderId}...`);
+    await db
+      .update(orders)
+      .set({
+        paymentStatus: newDbStatus,
+        payoutStatus: 'CANCELLED',
+        status: 'CANCELLED',
+        updatedAt: now,
+      })
+      .where(eq(orders.id, dbPayment.orderId));
+
+    await db
+      .update(financialLedger)
+      .set({
+        paymentStatus: newDbStatus,
+        orderStatus: 'CANCELLED',
+        payoutStatus: 'CANCELLED',
+        cancellationReason: mpStatusDetail || `Pagamento ${newDbStatus} no Mercado Pago`,
+        updatedAt: now,
+      })
+      .where(eq(financialLedger.orderId, dbPayment.orderId));
+  }
+
   // IF APPROVED: Grant benefits / Update order or subscription
   if (newDbStatus === 'APPROVED') {
     console.log(`[MercadoPago] Pagamento #${dbPayment.id} APROVADO! Liquidando transação...`);
@@ -580,10 +605,61 @@ export async function settlePayment(
           .update(orders)
           .set({
             status: 'PAID',
+            paymentStatus: 'APPROVED',
             paidAt: now,
+            mpPaymentId: String(mpData.id),
+            payoutStatus: 'PENDING_DELIVERY_CONFIRMATION',
             updatedAt: now,
           })
           .where(eq(orders.id, order.id));
+
+        await db
+          .update(commissions)
+          .set({
+            paidAt: now,
+            mpPaymentId: String(mpData.id),
+            payoutStatus: 'PENDING_DELIVERY_CONFIRMATION',
+          })
+          .where(eq(commissions.orderId, order.id));
+
+        // Insert or update financial ledger entry for complete reconciliation
+        const [existingLedger] = await db
+          .select()
+          .from(financialLedger)
+          .where(eq(financialLedger.orderId, order.id))
+          .limit(1);
+
+        if (existingLedger) {
+          await db
+            .update(financialLedger)
+            .set({
+              paymentId: dbPayment.id,
+              mpPaymentId: String(mpData.id),
+              paymentStatus: 'APPROVED',
+              orderStatus: 'PAID',
+              payoutStatus: 'PENDING_DELIVERY_CONFIRMATION',
+              approvedAt: now,
+              updatedAt: now,
+            })
+            .where(eq(financialLedger.id, existingLedger.id));
+        } else {
+          await db.insert(financialLedger).values({
+            transactionNumber: `TX-${order.orderNumber}`,
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            paymentId: dbPayment.id,
+            buyerId: order.buyerId,
+            sellerId: order.sellerId,
+            grossAmountCents: order.totalGrossCents,
+            platformFeeCents: order.commissionCents,
+            sellerAmountCents: order.sellerNetCents,
+            paymentStatus: 'APPROVED',
+            orderStatus: 'PAID',
+            payoutStatus: 'PENDING_DELIVERY_CONFIRMATION',
+            approvedAt: now,
+            mpPaymentId: String(mpData.id),
+          });
+        }
 
         // Notifications
         await db.insert(notifications).values({

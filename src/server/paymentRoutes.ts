@@ -62,6 +62,28 @@ router.post('/mercadopago/order/pix', requireAuth, async (req: AuthRequest, res)
       return res.status(403).json({ error: 'Apenas o comprador do pedido pode efetuar o pagamento.' });
     }
 
+    if (!order.buyerId || !order.sellerId) {
+      return res.status(400).json({ error: 'Pedido inválido: comprador ou vendedor não identificados.' });
+    }
+
+    if (order.totalGrossCents <= 0) {
+      return res.status(400).json({ error: 'Não é permitido criar pagamento com valor zerado (R$ 0,00).' });
+    }
+
+    // Verify order items exist
+    const { orderItems: orderItemsTable } = await import('../db/schema.ts');
+    const dbItems = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, order.id));
+    if (!dbItems || dbItems.length === 0) {
+      return res.status(400).json({ error: 'Pedido inválido: nenhum produto ou serviço associado a este pedido.' });
+    }
+
+    // Verify buyer and seller exist in users
+    const [buyerRecord] = await db.select().from(users).where(eq(users.id, order.buyerId)).limit(1);
+    const [sellerRecord] = await db.select().from(users).where(eq(users.id, order.sellerId)).limit(1);
+    if (!buyerRecord || !sellerRecord) {
+      return res.status(400).json({ error: 'Pedido inválido: comprador ou vendedor inexistente no sistema.' });
+    }
+
     if (order.status !== 'AWAITING_PAYMENT') {
       return res.status(400).json({ error: `Este pedido já está no status "${order.status}".` });
     }
@@ -155,7 +177,25 @@ router.post('/create-preference/:orderId', requireAuth, async (req: AuthRequest,
     if (!order) return res.status(404).json({ error: 'Pedido não encontrado.' });
 
     if (order.buyerId !== user.id && user.role !== 'MASTER_OWNER') {
-      return res.status(403).json({ error: 'Permissão negada.' });
+      return res.status(403).json({ error: 'Permissão negada: apenas o comprador pode gerar preferência de pagamento.' });
+    }
+
+    if (!order.buyerId || !order.sellerId) {
+      return res.status(400).json({ error: 'Pedido inválido: comprador ou vendedor ausente.' });
+    }
+
+    if (order.totalGrossCents <= 0) {
+      return res.status(400).json({ error: 'Não é permitido criar pagamento com valor zerado (R$ 0,00).' });
+    }
+
+    const { orderItems: orderItemsTable } = await import('../db/schema.ts');
+    const dbItems = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, order.id));
+    if (!dbItems || dbItems.length === 0) {
+      return res.status(400).json({ error: 'Pedido inválido: nenhum produto ou serviço encontrado para este pedido.' });
+    }
+
+    if (order.status !== 'AWAITING_PAYMENT') {
+      return res.status(400).json({ error: `Este pedido já está no status "${order.status}".` });
     }
 
     const externalRef = `VEND_PREF_${order.id}_${Date.now()}`;

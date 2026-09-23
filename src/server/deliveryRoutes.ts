@@ -11,6 +11,8 @@ import {
   auditLogs,
   addresses,
   orderItems,
+  financialLedger,
+  commissions,
 } from '../db/schema.ts';
 import { eq, and, or, desc } from 'drizzle-orm';
 import { AuthRequest, requireAuth, requireDriver } from '../middleware/auth.ts';
@@ -226,33 +228,63 @@ router.post('/confirm-code', requireAuth, async (req: AuthRequest, res) => {
       })
       .where(eq(deliveryCodes.id, codeRecord.id));
 
-    // Update order to DELIVERED
+    // Update order to DELIVERED and transition payoutStatus to AVAILABLE_FOR_PAYOUT
     const [updatedOrder] = await db
       .update(orders)
       .set({
         status: 'DELIVERED',
         deliveryCodeUsed: true,
         deliveredAt: now,
+        deliveryConfirmedAt: now,
+        payoutStatus: 'AVAILABLE_FOR_PAYOUT',
+        payoutReleasedAt: now,
+        confirmedByUserId: user.id,
         updatedAt: now,
       })
       .where(eq(orders.id, order.id))
       .returning();
 
-    // Update driver total deliveries count
+    // Update commissions table
     await db
-      .update(deliveryDrivers)
+      .update(commissions)
       .set({
-        totalDeliveries: (await db.select().from(deliveryDrivers).where(eq(deliveryDrivers.userId, user.id)))[0]?.totalDeliveries + 1 || 1,
-        status: 'AVAILABLE',
+        payoutStatus: 'AVAILABLE_FOR_PAYOUT',
+        payoutReleasedAt: now,
+        deliveredAt: now,
+      })
+      .where(eq(commissions.orderId, order.id));
+
+    // Update financial ledger for reconciliation
+    await db
+      .update(financialLedger)
+      .set({
+        orderStatus: 'DELIVERED',
+        payoutStatus: 'AVAILABLE_FOR_PAYOUT',
+        deliveryConfirmedAt: now,
         updatedAt: now,
       })
-      .where(eq(deliveryDrivers.userId, user.id));
+      .where(eq(financialLedger.orderId, order.id));
+
+    // Update driver total deliveries count if delivery was by driver
+    if (order.deliveryDriverId) {
+      const driverRecord = (await db.select().from(deliveryDrivers).where(eq(deliveryDrivers.userId, order.deliveryDriverId)))[0];
+      if (driverRecord) {
+        await db
+          .update(deliveryDrivers)
+          .set({
+            totalDeliveries: (driverRecord.totalDeliveries || 0) + 1,
+            status: 'AVAILABLE',
+            updatedAt: now,
+          })
+          .where(eq(deliveryDrivers.id, driverRecord.id));
+      }
+    }
 
     // Notify buyer
     await db.insert(notifications).values({
       userId: order.buyerId,
-      title: 'Entrega confirmada com sucesso!',
-      message: `Seu pedido #${order.orderNumber} foi entregue. Avalie o vendedor e o entregador!`,
+      title: order.deliveryType === 'PICKUP' ? 'Retirada concluída com sucesso!' : 'Entrega confirmada com sucesso!',
+      message: `Seu pedido #${order.orderNumber} foi finalizado. O código foi validado com segurança!`,
       type: 'DELIVERY',
       link: `/pedidos`,
     });
@@ -260,8 +292,8 @@ router.post('/confirm-code', requireAuth, async (req: AuthRequest, res) => {
     // Notify seller
     await db.insert(notifications).values({
       userId: order.sellerId,
-      title: 'Pedido entregue!',
-      message: `O pedido #${order.orderNumber} foi entregue com sucesso e o valor foi liberado.`,
+      title: order.deliveryType === 'PICKUP' ? 'Retirada confirmada! Repasse liberado.' : 'Pedido entregue! Repasse liberado.',
+      message: `O pedido #${order.orderNumber} teve o recebimento confirmado pelo cliente e o repasse foi LIBERADO no ledger do VEND+.`,
       type: 'SALE',
       link: `/pedidos`,
     });
@@ -275,6 +307,8 @@ router.post('/confirm-code', requireAuth, async (req: AuthRequest, res) => {
       details: JSON.stringify({
         confirmedBy: user.id,
         orderNumber: order.orderNumber,
+        deliveryType: order.deliveryType,
+        payoutStatus: 'RELEASED',
         timestamp: now.toISOString(),
       }),
     });

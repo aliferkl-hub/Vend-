@@ -13,6 +13,7 @@ import {
   RefreshCw,
   X,
   CreditCard,
+  ShieldCheck,
 } from 'lucide-react';
 import { Order } from '../types.ts';
 import { useAuth } from '../context/AuthContext.tsx';
@@ -170,10 +171,18 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigate }) => {
           </span>
         );
       case 'IN_TRANSIT':
+      case 'OUT_FOR_DELIVERY':
         return (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-sky-50 text-sky-700 border border-sky-200">
             <Truck className="w-3.5 h-3.5" />
-            <span>Em Trânsito com Entregador</span>
+            <span>Em Trânsito / Saiu para Entrega</span>
+          </span>
+        );
+      case 'WAITING_CONFIRMATION':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
+            <KeyRound className="w-3.5 h-3.5 text-amber-600" />
+            <span>Aguardando Confirmação do Código</span>
           </span>
         );
       case 'DELIVERED':
@@ -302,8 +311,131 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigate }) => {
                   ))}
                 </div>
 
-                {/* CRITICAL: 4-Digit Delivery Code Box */}
-                {order.deliveryType === 'SHIPPING' && !isAwaitingPayment && (
+                {/* ÁREA DE PROTEÇÃO DA COMPRA VEND+ */}
+                <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 sm:p-5 space-y-3.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/60 pb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-600">
+                        <ShieldCheck className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-black text-slate-900 tracking-tight flex items-center gap-1.5">
+                          Proteção da sua compra VEND+
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                            Garantia Ativa
+                          </span>
+                        </h4>
+                        <p className="text-[11px] text-slate-500">
+                          Seu dinheiro fica protegido e o repasse ao vendedor só ocorre após você confirmar o recebimento pelo código.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 7-Step Visual Ruler */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 pt-1 text-[11px]">
+                    {/* Step 1: Pagamento Mercado Pago */}
+                    <div className={`p-2.5 rounded-xl border flex items-start gap-2 ${
+                      !isAwaitingPayment && order.status !== 'CANCELLED'
+                        ? 'bg-emerald-50/60 border-emerald-200 text-emerald-900'
+                        : 'bg-white border-slate-200 text-slate-400'
+                    }`}>
+                      <CheckCircle className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${
+                        !isAwaitingPayment && order.status !== 'CANCELLED' ? 'text-emerald-600' : 'text-slate-300'
+                      }`} />
+                      <div>
+                        <span className="font-bold block">1. Pagamento Aprovado</span>
+                        <span className="text-[10px] text-slate-500">
+                          {!isAwaitingPayment ? 'Confirmado Mercado Pago' : 'Aguardando pagamento'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Step 2: Em Preparação */}
+                    <div className={`p-2.5 rounded-xl border flex items-start gap-2 ${
+                      ['PREPARING', 'READY_FOR_PICKUP', 'IN_TRANSIT', 'OUT_FOR_DELIVERY', 'WAITING_CONFIRMATION', 'DELIVERED'].includes(order.status)
+                        ? 'bg-emerald-50/60 border-emerald-200 text-emerald-900'
+                        : 'bg-white border-slate-200 text-slate-400'
+                    }`}>
+                      <CheckCircle className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${
+                        ['PREPARING', 'READY_FOR_PICKUP', 'IN_TRANSIT', 'OUT_FOR_DELIVERY', 'WAITING_CONFIRMATION', 'DELIVERED'].includes(order.status)
+                          ? 'text-emerald-600' : 'text-slate-300'
+                      }`} />
+                      <div>
+                        <span className="font-bold block">2. Em Preparação</span>
+                        <span className="text-[10px] text-slate-500">Separado pelo vendedor</span>
+                      </div>
+                    </div>
+
+                    {/* Step 3: A Caminho / Pronto Retirada */}
+                    <div className={`p-2.5 rounded-xl border flex items-start gap-2 ${
+                      ['READY_FOR_PICKUP', 'IN_TRANSIT', 'OUT_FOR_DELIVERY', 'WAITING_CONFIRMATION', 'DELIVERED'].includes(order.status)
+                        ? 'bg-emerald-50/60 border-emerald-200 text-emerald-900'
+                        : 'bg-white border-slate-200 text-slate-400'
+                    }`}>
+                      <CheckCircle className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${
+                        ['READY_FOR_PICKUP', 'IN_TRANSIT', 'OUT_FOR_DELIVERY', 'WAITING_CONFIRMATION', 'DELIVERED'].includes(order.status)
+                          ? 'text-emerald-600' : 'text-slate-300'
+                      }`} />
+                      <div>
+                        <span className="font-bold block">3. Enviado / Pronto</span>
+                        <span className="text-[10px] text-slate-500">Rota ou pronto p/ retirada</span>
+                      </div>
+                    </div>
+
+                    {/* Step 4 & 5: Código Gerado / Aguardando */}
+                    <div className={`p-2.5 rounded-xl border flex items-start gap-2 ${
+                      !isAwaitingPayment && order.status !== 'CANCELLED'
+                        ? 'bg-emerald-50/60 border-emerald-200 text-emerald-900'
+                        : 'bg-white border-slate-200 text-slate-400'
+                    }`}>
+                      <CheckCircle className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${
+                        !isAwaitingPayment && order.status !== 'CANCELLED' ? 'text-emerald-600' : 'text-slate-300'
+                      }`} />
+                      <div>
+                        <span className="font-bold block">4. Código 4 Dígitos Ativo</span>
+                        <span className="text-[10px] text-slate-500">Código único e intransferível</span>
+                      </div>
+                    </div>
+
+                    {/* Step 6: Recebimento Confirmado */}
+                    <div className={`p-2.5 rounded-xl border flex items-start gap-2 ${
+                      order.status === 'DELIVERED'
+                        ? 'bg-emerald-50/60 border-emerald-200 text-emerald-900'
+                        : 'bg-white border-slate-200 text-slate-400'
+                    }`}>
+                      <CheckCircle className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${
+                        order.status === 'DELIVERED' ? 'text-emerald-600' : 'text-slate-300'
+                      }`} />
+                      <div>
+                        <span className="font-bold block">5. Recebimento Validado</span>
+                        <span className="text-[10px] text-slate-500">Código conferido na entrega</span>
+                      </div>
+                    </div>
+
+                    {/* Step 7: Transação Concluída & Repasse Liberado */}
+                    <div className={`p-2.5 rounded-xl border flex items-start gap-2 col-span-1 sm:col-span-2 lg:col-span-3 ${
+                      order.status === 'DELIVERED'
+                        ? 'bg-emerald-500 text-slate-950 font-bold border-emerald-400'
+                        : 'bg-white border-slate-200 text-slate-400'
+                    }`}>
+                      <CheckCircle className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${
+                        order.status === 'DELIVERED' ? 'text-slate-950' : 'text-slate-300'
+                      }`} />
+                      <div>
+                        <span className="font-black block">6. Concluída & Repasse Disponibilizado</span>
+                        <span className={`text-[10px] ${order.status === 'DELIVERED' ? 'text-slate-800' : 'text-slate-500'}`}>
+                          {order.status === 'DELIVERED'
+                            ? 'Transação concluída com sucesso. Valor disponível para repasse ao vendedor.'
+                            : 'O saldo só é disponibilizado para repasse após validação do seu código.'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* CRITICAL: 4-Digit Delivery / Pickup Code Box */}
+                {!isAwaitingPayment && (
                   <div
                     id={`delivery-code-box-${order.id}`}
                     className={`rounded-2xl p-4 border flex flex-col sm:flex-row items-center justify-between gap-4 ${
@@ -315,11 +447,17 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigate }) => {
                     <div className="space-y-1 text-center sm:text-left">
                       <div className="flex items-center justify-center sm:justify-start gap-1.5 text-xs font-bold text-emerald-400">
                         <KeyRound className="w-4 h-4" />
-                        <span>Código Secreto de Entrega (4 Dígitos)</span>
+                        <span>
+                          {order.deliveryType === 'PICKUP'
+                            ? 'Código Secreto de Retirada (4 Dígitos)'
+                            : 'Código Secreto de Entrega (4 Dígitos)'}
+                        </span>
                       </div>
                       <p className={`text-[11px] ${isDelivered ? 'text-slate-500' : 'text-slate-300'} max-w-md`}>
                         {isDelivered
-                          ? 'Código já utilizado e entrega finalizada com sucesso.'
+                          ? 'Código já validado com sucesso e entrega concluída.'
+                          : order.deliveryType === 'PICKUP'
+                          ? 'Atenção: informe estes 4 dígitos ao vendedor SOMENTE no momento de retirar o produto no local!'
                           : 'Atenção: informe estes 4 dígitos ao entregador SOMENTE após receber e conferir o pacote na sua porta!'}
                       </p>
                     </div>
@@ -332,7 +470,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigate }) => {
                             : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
                         }`}
                       >
-                        {isDelivered ? 'UTILIZADO' : isRevealed ? order.deliveryCode : '• • • •'}
+                        {isDelivered ? 'CONFIRMADO' : isRevealed ? order.deliveryCode : '• • • •'}
                       </div>
 
                       {!isDelivered && (
@@ -349,13 +487,31 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigate }) => {
                   </div>
                 )}
 
-                {/* Footer Total */}
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-                  <div className="text-slate-500">
-                    <span>Forma: </span>
-                    <strong className="text-slate-700">
-                      {order.deliveryType === 'SHIPPING' ? 'Entrega Local' : 'Retirada no Local'}
-                    </strong>
+                {/* Footer Total & Ledger Payout Status */}
+                <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                  <div className="space-y-0.5">
+                    <div className="text-slate-500">
+                      <span>Recebimento: </span>
+                      <strong className="text-slate-700">
+                        {order.deliveryType === 'SHIPPING' ? 'Entrega Local Segura' : 'Retirada no Local'}
+                      </strong>
+                    </div>
+                    {!isAwaitingPayment && (
+                      <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
+                        <span>Repasse ao Vendedor: </span>
+                        <span
+                          className={`font-bold px-2 py-0.5 rounded-md ${
+                            order.payoutStatus === 'RELEASED'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : 'bg-amber-50 text-amber-700 border border-amber-200'
+                          }`}
+                        >
+                          {order.payoutStatus === 'RELEASED'
+                            ? '✓ Liberado (Recebimento Confirmado)'
+                            : '⏳ Pendente (Aguardando Confirmação do Código)'}
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <div className="text-right">
                     <span className="text-slate-500">{isAwaitingPayment ? 'Total a Pagar: ' : 'Total: '}</span>

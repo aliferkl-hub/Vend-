@@ -16,13 +16,16 @@ import {
   ExternalLink,
   X,
   ShoppingBag,
+  Zap,
 } from 'lucide-react';
-import { CartItem, Address, Negotiation } from '../types.ts';
+import { CartItem, Address, Negotiation, DirectBuyIntent } from '../types.ts';
 import { useAuth } from '../context/AuthContext.tsx';
 import { useCart, normalizeCartItem } from '../context/CartContext.tsx';
 
 interface CheckoutViewProps {
   negotiationItem?: Negotiation | null;
+  directBuyIntent?: DirectBuyIntent | null;
+  onClearDirectBuy?: () => void;
   onOrderCreated: (orderId: number) => void;
   onBack: () => void;
 }
@@ -40,11 +43,30 @@ interface PixOrderData {
 
 export const CheckoutView: React.FC<CheckoutViewProps> = ({
   negotiationItem,
+  directBuyIntent,
+  onClearDirectBuy,
   onOrderCreated,
   onBack,
 }) => {
   const { user } = useAuth();
   const { items: cartItems, clearCart } = useCart();
+
+  // Active direct buy support (bypasses cart entirely)
+  const [activeDirectBuy, setActiveDirectBuy] = useState<DirectBuyIntent | null>(() => {
+    if (directBuyIntent) return directBuyIntent;
+    try {
+      const saved = sessionStorage.getItem('vend_direct_buy_intent');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    if (directBuyIntent) {
+      setActiveDirectBuy(directBuyIntent);
+    }
+  }, [directBuyIntent]);
 
   // Active negotiation support (restored from props or session storage)
   const [activeNegotiation, setActiveNegotiation] = useState<Negotiation | null>(() => {
@@ -65,6 +87,33 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
 
   // Robust cart items loader with fallback to ensure items are never lost during navigation
   const checkoutItems: CartItem[] = React.useMemo(() => {
+    if (activeDirectBuy) {
+      const pName = activeDirectBuy.name || activeDirectBuy.title;
+      const pImg = activeDirectBuy.imageUrl || activeDirectBuy.image;
+      const pPrice = activeDirectBuy.unitPriceCents || activeDirectBuy.priceCents;
+      const pQty = activeDirectBuy.quantity || 1;
+      const pSubtotal = activeDirectBuy.subtotalCents || pPrice * pQty;
+      return [
+        {
+          id: `direct-${activeDirectBuy.intentId}`,
+          productId: activeDirectBuy.productId,
+          type: 'PRODUCT',
+          title: pName,
+          name: pName,
+          priceCents: pPrice,
+          price: pPrice / 100,
+          quantity: pQty,
+          imageUrl: pImg,
+          image: pImg,
+          sellerId: activeDirectBuy.sellerId,
+          sellerName: activeDirectBuy.sellerName || 'Vendedor VEND+',
+          variations: activeDirectBuy.variations,
+          subtotalCents: pSubtotal,
+          subtotal: pSubtotal / 100,
+        },
+      ];
+    }
+
     if (activeNegotiation) {
       const pName = activeNegotiation.product?.name || activeNegotiation.service?.name || 'Item Negociado';
       const pImg = activeNegotiation.product?.imageUrl || activeNegotiation.service?.imageUrl || '';
@@ -105,7 +154,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
     } catch {}
 
     return [];
-  }, [activeNegotiation, cartItems]);
+  }, [activeDirectBuy, activeNegotiation, cartItems]);
 
   const [deliveryType, setDeliveryType] = useState<'SHIPPING' | 'PICKUP'>('SHIPPING');
   const [paymentMethod, setPaymentMethod] = useState<'PIX' | 'MERCADO_PAGO_CHECKOUT'>('PIX');
@@ -265,6 +314,7 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
           productId: it.productId,
           serviceId: it.serviceId,
           quantity: it.quantity,
+          variations: (it as any).variations || null,
         })),
         deliveryType,
         addressId: deliveryType === 'SHIPPING' ? selectedAddressId : null,
@@ -313,6 +363,15 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
           return;
         }
 
+        // Clean up direct purchase intent while preserving cart
+        if (activeDirectBuy) {
+          try {
+            sessionStorage.removeItem('vend_direct_buy_intent');
+            setActiveDirectBuy(null);
+            if (onClearDirectBuy) onClearDirectBuy();
+          } catch {}
+        }
+
         setPixOrderModal({
           orderId: createdOrderId,
           orderNumber: orderData.orderNumber || String(createdOrderId),
@@ -333,10 +392,18 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
 
         const prefData = await resPref.json();
         if (resPref.ok && prefData.initPoint) {
-          clearCart();
-          try {
-            sessionStorage.removeItem('vend_checkout_negotiation');
-          } catch {}
+          if (activeDirectBuy) {
+            try {
+              sessionStorage.removeItem('vend_direct_buy_intent');
+              setActiveDirectBuy(null);
+              if (onClearDirectBuy) onClearDirectBuy();
+            } catch {}
+          } else {
+            clearCart();
+            try {
+              sessionStorage.removeItem('vend_checkout_negotiation');
+            } catch {}
+          }
           window.location.href = prefData.initPoint;
         } else {
           onOrderCreated(createdOrderId);
@@ -403,6 +470,27 @@ export const CheckoutView: React.FC<CheckoutViewProps> = ({
       </div>
 
       <h1 className="text-2xl font-black text-slate-900">Finalizar Compra</h1>
+
+      {activeDirectBuy && (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center flex-shrink-0">
+              <Zap className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-xs font-black text-emerald-950">
+                Compra Direta: Comprar Agora
+              </p>
+              <p className="text-[11px] text-emerald-700">
+                Você está finalizando a compra direta deste produto. Seu carrinho existente foi preservado intacto.
+              </p>
+            </div>
+          </div>
+          <span className="text-[10px] font-mono font-bold text-emerald-800 bg-white px-2.5 py-1 rounded-lg border border-emerald-200 self-start sm:self-auto">
+            {activeDirectBuy.intentId}
+          </span>
+        </div>
+      )}
 
       {errorMsg && (
         <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 text-xs flex items-center gap-2">
