@@ -29,7 +29,19 @@ function generate4DigitCode(): string {
 router.post('/checkout', requireAuth, async (req: AuthRequest, res) => {
   try {
     const buyer = req.user!;
-    const { items, deliveryType = 'SHIPPING', addressId, acceptedNegotiationId } = req.body;
+    const { items, deliveryType = 'SHIPPING', addressId, acceptedNegotiationId, paymentMethod } = req.body;
+
+    // Strict Enforcement: If user chose PIX or MERCADO_PAGO_CHECKOUT, verify Mercado Pago is configured
+    if (paymentMethod === 'PIX' || paymentMethod === 'MERCADO_PAGO_CHECKOUT') {
+      const { getMercadoPagoCredentials } = await import('./mercadopagoService.ts');
+      const creds = await getMercadoPagoCredentials();
+      if (!creds.isConfigured) {
+        return res.status(503).json({
+          error: 'MERCADO PAGO NÃO CONFIGURADO: O pagamento ainda não pode ser processado. O administrador precisa configurar as credenciais de produção do Mercado Pago.',
+          code: 'MP_NOT_CONFIGURED',
+        });
+      }
+    }
 
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'O carrinho está vazio.' });

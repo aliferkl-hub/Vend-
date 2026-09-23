@@ -284,16 +284,25 @@ export const payments = pgTable('payments', {
   id: serial('id').primaryKey(),
   orderId: integer('order_id').references(() => orders.id),
   subscriptionId: integer('subscription_id').references(() => subscriptions.id),
+  userId: integer('user_id').references(() => users.id),
   paymentType: text('payment_type').notNull().default('ORDER'), // 'ORDER' | 'SUBSCRIPTION'
   amountCents: integer('amount_cents').notNull(),
   status: text('status').notNull().default('PENDING'), // 'PENDING' | 'APPROVED' | 'CANCELLED' | 'REFUNDED'
+  statusDetail: text('status_detail'),
   paymentMethod: text('payment_method').notNull().default('MERCADO_PAGO'),
+  currency: text('currency').notNull().default('BRL'),
   externalReference: text('external_reference').notNull().unique(),
   mpPaymentId: text('mp_payment_id'),
   mpStatus: text('mp_status'),
   mpRawResponse: text('mp_raw_response'),
+  qrCode: text('qr_code'),
+  qrCodeBase64: text('qr_code_base64'),
+  ticketUrl: text('ticket_url'),
+  idempotencyKey: text('idempotency_key'),
   paidAt: timestamp('paid_at'),
+  dateApproved: timestamp('date_approved'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
 // 17. COMMISSIONS

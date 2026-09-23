@@ -3,63 +3,15 @@ import { db } from '../db/index.ts';
 import { plans, subscriptions, users, payments, auditLogs } from '../db/schema.ts';
 import { eq, desc, and } from 'drizzle-orm';
 import { AuthRequest, requireAuth } from '../middleware/auth.ts';
+import {
+  createPixPayment,
+  createCheckoutPreference,
+  getPaymentFromMercadoPago,
+  settlePayment,
+  getMercadoPagoCredentials,
+} from './mercadopagoService.ts';
 
 const router = Router();
-
-const PLAN_PIX_KEY = '11973479473';
-
-// CRC-16 CCITT for EMVCo PIX standard
-function crc16(payload: string): string {
-  let crc = 0xffff;
-  for (let i = 0; i < payload.length; i++) {
-    crc ^= payload.charCodeAt(i) << 8;
-    for (let j = 0; j < 8; j++) {
-      if ((crc & 0x8000) !== 0) {
-        crc = ((crc << 1) ^ 0x1021) & 0xffff;
-      } else {
-        crc = (crc << 1) & 0xffff;
-      }
-    }
-  }
-  return crc.toString(16).toUpperCase().padStart(4, '0');
-}
-
-// Format EMV TLV (Tag Length Value)
-function emvTlv(id: string, value: string): string {
-  const len = value.length.toString().padStart(2, '0');
-  return `${id}${len}${value}`;
-}
-
-// Generate valid PIX BRCode (Copia e Cola)
-function generatePixBrCode(key: string, amount: number, txId: string, description: string): string {
-  // Merchant Account Info (ID 26)
-  const gui = emvTlv('00', 'br.gov.bcb.pix');
-  const pixKey = emvTlv('01', key);
-  const desc = description ? emvTlv('02', description.substring(0, 25)) : '';
-  const merchantAccountInfo = emvTlv('26', `${gui}${pixKey}${desc}`);
-
-  // Additional Data Field (ID 62)
-  const txField = emvTlv('05', txId.substring(0, 25));
-  const additionalData = emvTlv('62', txField);
-
-  const amountStr = (amount / 100).toFixed(2);
-
-  const rawPayload =
-    emvTlv('00', '01') + // Format indicator
-    emvTlv('01', '12') + // Dynamic/Static (12 = with amount)
-    merchantAccountInfo +
-    emvTlv('52', '0000') + // Merchant Category Code
-    emvTlv('53', '986') + // Currency: BRL (986)
-    emvTlv('54', amountStr) + // Amount
-    emvTlv('58', 'BR') + // Country code
-    emvTlv('59', 'VEND MAIS') + // Merchant name
-    emvTlv('60', 'SAO PAULO') + // City
-    additionalData +
-    '6304'; // CRC placeholder
-
-  const calculatedCrc = crc16(rawPayload);
-  return `${rawPayload}${calculatedCrc}`;
-}
 
 // 1. LIST PLANS (Public)
 router.get('/', async (req, res) => {
@@ -72,11 +24,11 @@ router.get('/', async (req, res) => {
   }
 });
 
-// 2. CREATE PIX FOR PLAN SUBSCRIPTION
+// 2. CREATE REAL MERCADO PAGO PIX FOR PLAN SUBSCRIPTION
 router.post('/create-pix', requireAuth, async (req: AuthRequest, res) => {
   try {
     const user = req.user!;
-    const { planSlug, planId } = req.body;
+    const { planSlug, planId, payer } = req.body;
 
     let plan;
     if (planId) {
@@ -90,46 +42,57 @@ router.post('/create-pix', requireAuth, async (req: AuthRequest, res) => {
     }
 
     if (plan.priceCents === 0) {
-      return res.status(400).json({ error: 'O plano Gratuito não requer pagamento por PIX.' });
+      return res.status(400).json({ error: 'O plano Gratuito não requer pagamento.' });
     }
 
-    const txId = `VP${user.id}P${plan.id}T${Date.now().toString().slice(-6)}`;
-    const externalRef = `PIX-PLAN-${user.id}-${plan.id}-${Date.now()}`;
+    const creds = await getMercadoPagoCredentials();
+    if (!creds.isConfigured) {
+      return res.status(503).json({
+        error: 'O Mercado Pago ainda precisa ser configurado com o Token de Produção no servidor.',
+        configured: false,
+      });
+    }
 
-    // Generate BRCode Copia e Cola
-    const brCode = generatePixBrCode(
-      PLAN_PIX_KEY,
-      plan.priceCents,
-      txId,
-      `VEND+ ${plan.name}`
-    );
+    const externalRef = `VEND_PLAN_${user.id}_${plan.id}_${Date.now()}`;
+    const payerEmail = payer?.email || user.email;
+    const payerNameParts = (payer?.name || user.name || 'Cliente VEND+').split(' ');
+    const firstName = payerNameParts[0] || 'Cliente';
+    const lastName = payerNameParts.slice(1).join(' ') || 'VEND+';
+    const payerCpf = payer?.cpf;
 
-    // High quality QR Code image using standard encoded BRCode
-    const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(
-      brCode
-    )}`;
-
-    // Create a pending payment record
-    const [paymentRecord] = await db
-      .insert(payments)
-      .values({
-        paymentType: 'SUBSCRIPTION',
-        amountCents: plan.priceCents,
-        status: 'PENDING',
-        paymentMethod: 'PIX',
-        externalReference: externalRef,
-      })
-      .returning();
+    const pixResult = await createPixPayment({
+      amountCents: plan.priceCents,
+      description: `Assinatura Plano VEND+ ${plan.name}`,
+      externalReference: externalRef,
+      userId: user.id,
+      paymentType: 'SUBSCRIPTION',
+      payer: {
+        email: payerEmail,
+        firstName,
+        lastName,
+        cpf: payerCpf,
+      },
+    });
 
     const formattedAmount = (plan.priceCents / 100).toLocaleString('pt-BR', {
       style: 'currency',
       currency: 'BRL',
     });
 
+    // Provide qrCodeUrl for frontend display:
+    // If Mercado Pago returned qrCodeBase64, use real base64 data URI!
+    // Also provide standard QR code generator as visual backup of the exact qrCode (copia e cola)
+    const qrImage = pixResult.qrCodeBase64
+      ? `data:image/png;base64,${pixResult.qrCodeBase64}`
+      : `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(
+          pixResult.qrCode || ''
+        )}`;
+
     return res.json({
-      paymentId: paymentRecord.id,
+      success: true,
+      paymentId: pixResult.paymentId,
+      mpPaymentId: pixResult.mpPaymentId,
       externalReference: externalRef,
-      pixKey: PLAN_PIX_KEY,
       plan: {
         id: plan.id,
         name: plan.name,
@@ -138,17 +101,68 @@ router.post('/create-pix', requireAuth, async (req: AuthRequest, res) => {
       },
       amountCents: plan.priceCents,
       amountFormatted: formattedAmount,
-      copiaECola: brCode,
-      qrCodeUrl,
-      status: 'Aguardando pagamento',
+      copiaECola: pixResult.qrCode,
+      qrCode: pixResult.qrCode,
+      qrCodeUrl: qrImage,
+      ticketUrl: pixResult.ticketUrl,
+      status: 'Aguardando pagamento no Mercado Pago',
     });
-  } catch (err) {
+  } catch (err: any) {
     console.error('Create plan PIX error:', err);
-    return res.status(500).json({ error: 'Erro ao gerar pagamento PIX para o plano.' });
+    return res.status(500).json({ error: err.message || 'Erro ao gerar pagamento PIX para o plano no Mercado Pago.' });
   }
 });
 
-// 3. CONFIRM PIX PAYMENT & ACTIVATE PLAN (Only unlocks on valid confirmation)
+// 3. CREATE CHECKOUT PRO PREFERENCE FOR PLAN
+router.post('/create-preference', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const user = req.user!;
+    const { planSlug, planId } = req.body;
+
+    let plan;
+    if (planId) {
+      [plan] = await db.select().from(plans).where(eq(plans.id, Number(planId))).limit(1);
+    } else if (planSlug) {
+      [plan] = await db.select().from(plans).where(eq(plans.slug, planSlug)).limit(1);
+    }
+
+    if (!plan || plan.priceCents === 0) {
+      return res.status(400).json({ error: 'Plano inválido para pagamento.' });
+    }
+
+    const creds = await getMercadoPagoCredentials();
+    if (!creds.isConfigured) {
+      return res.status(503).json({
+        error: 'O Mercado Pago ainda precisa ser configurado com o Token de Produção no servidor.',
+        configured: false,
+      });
+    }
+
+    const externalRef = `VEND_PREF_PLAN_${user.id}_${plan.id}_${Date.now()}`;
+    const prefResult = await createCheckoutPreference({
+      planId: plan.id,
+      userId: user.id,
+      title: `Assinatura Plano VEND+ ${plan.name}`,
+      amountCents: plan.priceCents,
+      externalReference: externalRef,
+      payerEmail: user.email,
+      payerName: user.name,
+    });
+
+    return res.json({
+      success: true,
+      initPoint: prefResult.initPoint,
+      preferenceId: prefResult.preferenceId,
+      externalReference: externalRef,
+      paymentId: prefResult.paymentId,
+    });
+  } catch (err: any) {
+    console.error('Create plan preference error:', err);
+    return res.status(500).json({ error: err.message || 'Erro ao criar preferência de pagamento.' });
+  }
+});
+
+// 4. CHECK STATUS & CONFIRM PLAN (NEVER ACTIVATES WITHOUT REAL MERCADO PAGO CONFIRMATION!)
 router.post('/confirm-pix', requireAuth, async (req: AuthRequest, res) => {
   try {
     const user = req.user!;
@@ -168,95 +182,61 @@ router.post('/confirm-pix', requireAuth, async (req: AuthRequest, res) => {
       return res.status(404).json({ error: 'Registro de pagamento não localizado.' });
     }
 
-    // Find the target plan
-    let targetPlan;
-    if (planSlug) {
-      [targetPlan] = await db.select().from(plans).where(eq(plans.slug, planSlug)).limit(1);
-    }
-    if (!targetPlan) {
-      // Find plan by price matching payment amount
-      const matchingPlans = await db
-        .select()
-        .from(plans)
-        .where(eq(plans.priceCents, paymentRecord.amountCents))
-        .limit(1);
-      targetPlan = matchingPlans[0];
-    }
-
-    if (!targetPlan) {
-      return res.status(404).json({ error: 'Plano correspondente não encontrado.' });
-    }
-
-    // Mark payment as APPROVED
-    await db
-      .update(payments)
-      .set({
+    // If already approved, return success
+    if (paymentRecord.status === 'APPROVED') {
+      const [updatedUser] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
+      return res.json({
+        success: true,
+        approved: true,
         status: 'APPROVED',
-        paidAt: new Date(),
-      })
-      .where(eq(payments.id, paymentRecord.id));
+        message: 'Pagamento confirmado! Seu plano está 100% ativo.',
+        userPlanSlug: updatedUser?.planSlug,
+      });
+    }
 
-    // Calculate subscription period: 30 days
-    const startDate = new Date();
-    const endDate = new Date();
-    endDate.setDate(endDate.getDate() + 30);
+    // Actively query Mercado Pago API to check if user paid
+    if (paymentRecord.mpPaymentId) {
+      const mpData = await getPaymentFromMercadoPago(paymentRecord.mpPaymentId);
+      if (mpData && mpData.status) {
+        const settlement = await settlePayment(paymentRecord, mpData);
 
-    // Create or update subscription record with APPROVED/ACTIVE status
-    const [sub] = await db
-      .insert(subscriptions)
-      .values({
-        userId: user.id,
-        planId: targetPlan.id,
-        status: 'ACTIVE',
-        currentPeriodStart: startDate,
-        currentPeriodEnd: endDate,
-        autoRenew: true,
-      })
-      .returning();
-
-    // Link payment with subscription
-    await db
-      .update(payments)
-      .set({ subscriptionId: sub.id })
-      .where(eq(payments.id, paymentRecord.id));
-
-    // Activate the user's new plan in their profile
-    await db
-      .update(users)
-      .set({
-        planSlug: targetPlan.slug,
-        updatedAt: new Date(),
-      })
-      .where(eq(users.id, user.id));
-
-    // Audit log
-    await db.insert(auditLogs).values({
-      userId: user.id,
-      action: 'PLAN_PIX_CONFIRMED',
-      entityType: 'PLAN',
-      entityId: String(targetPlan.id),
-      details: JSON.stringify({
-        paymentId: paymentRecord.id,
-        plan: targetPlan.name,
-        slug: targetPlan.slug,
-        amountCents: paymentRecord.amountCents,
-        pixKey: PLAN_PIX_KEY,
-        confirmedAt: new Date().toISOString(),
-      }),
-    });
+        if (settlement.status === 'APPROVED') {
+          const [updatedUser] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
+          return res.json({
+            success: true,
+            approved: true,
+            status: 'APPROVED',
+            message: 'Pagamento identificado e aprovado pelo Mercado Pago! Seu plano foi ativado.',
+            userPlanSlug: updatedUser?.planSlug,
+          });
+        } else {
+          return res.json({
+            success: false,
+            approved: false,
+            status: settlement.status,
+            statusDetail: mpData.status_detail,
+            message:
+              settlement.status === 'CANCELLED'
+                ? 'Este pagamento foi cancelado ou expirou no Mercado Pago.'
+                : 'Ainda aguardando a confirmação do pagamento pelo Mercado Pago. Conclua a transferência no app do seu banco e aguarde alguns segundos.',
+          });
+        }
+      }
+    }
 
     return res.json({
-      success: true,
-      message: `Pagamento confirmado com sucesso! Seu plano ${targetPlan.name} está 100% ativo.`,
-      plan: targetPlan,
+      success: false,
+      approved: false,
+      status: paymentRecord.status,
+      message: 'Ainda aguardando a confirmação do pagamento pelo banco.',
     });
-  } catch (err) {
-    console.error('Confirm plan PIX error:', err);
-    return res.status(500).json({ error: 'Erro ao validar e confirmar pagamento PIX.' });
+  } catch (err: any) {
+    console.error('Check plan PIX error:', err);
+    return res.status(500).json({ error: 'Erro ao validar status do pagamento no Mercado Pago.' });
   }
 });
 
-// 4. SUBSCRIBE FREE PLAN (Immediate, 0 cost)
+// 5. SUBSCRIBE FREE PLAN (Immediate, 0 cost)
 router.post('/subscribe', requireAuth, async (req: AuthRequest, res) => {
   try {
     const user = req.user!;
@@ -271,10 +251,10 @@ router.post('/subscribe', requireAuth, async (req: AuthRequest, res) => {
       return res.status(404).json({ error: 'Plano selecionado não existe.' });
     }
 
-    // Free plan can be switched directly; Paid plans REQUIRE payment confirmation via PIX
+    // Free plan can be switched directly; Paid plans REQUIRE real payment confirmation via Mercado Pago
     if (plan.priceCents > 0) {
       return res.status(402).json({
-        error: 'Este plano é pago e requer confirmação de pagamento por PIX antes de ser liberado.',
+        error: 'Este plano é pago e requer confirmação de pagamento pelo Mercado Pago antes de ser liberado.',
         requiresPayment: true,
         planId: plan.id,
         planSlug: plan.slug,
@@ -282,46 +262,76 @@ router.post('/subscribe', requireAuth, async (req: AuthRequest, res) => {
       });
     }
 
-    // Set expiration 30 days ahead
-    const startDate = new Date();
-    const endDate = new Date();
-    endDate.setDate(endDate.getDate() + 30);
-
-    // Create or update subscription record
-    await db.insert(subscriptions).values({
-      userId: user.id,
-      planId: plan.id,
-      status: 'ACTIVE',
-      currentPeriodStart: startDate,
-      currentPeriodEnd: endDate,
-      autoRenew: true,
-    });
-
-    // Update user's active plan slug
+    // Free plan: downgrade or reset
     await db
       .update(users)
       .set({
-        planSlug: plan.slug,
+        planSlug: 'free',
         updatedAt: new Date(),
       })
       .where(eq(users.id, user.id));
 
-    // Audit log
     await db.insert(auditLogs).values({
       userId: user.id,
-      action: 'UPGRADE_PLAN_FREE',
+      action: 'PLAN_SUBSCRIBE_FREE',
       entityType: 'PLAN',
       entityId: String(plan.id),
       details: JSON.stringify({ plan: plan.name, slug: plan.slug }),
     });
 
     return res.json({
-      message: `Plano ${plan.name} ativado com sucesso!`,
-      currentPlan: plan,
+      success: true,
+      message: `Você agora está no plano ${plan.name}.`,
+      planSlug: plan.slug,
     });
   } catch (err) {
     console.error('Subscribe plan error:', err);
-    return res.status(500).json({ error: 'Erro ao processar ativação de plano.' });
+    return res.status(500).json({ error: 'Erro ao assinar plano.' });
+  }
+});
+
+// 6. GET USER CURRENT SUBSCRIPTION
+router.get('/my', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const user = req.user!;
+    const [sub] = await db
+      .select({
+        id: subscriptions.id,
+        status: subscriptions.status,
+        currentPeriodStart: subscriptions.currentPeriodStart,
+        currentPeriodEnd: subscriptions.currentPeriodEnd,
+        autoRenew: subscriptions.autoRenew,
+        plan: {
+          id: plans.id,
+          name: plans.name,
+          slug: plans.slug,
+          priceCents: plans.priceCents,
+          commissionPercent: plans.commissionPercent,
+          maxActiveListings: plans.maxActiveListings,
+          features: plans.features,
+        },
+      })
+      .from(subscriptions)
+      .leftJoin(plans, eq(subscriptions.planId, plans.id))
+      .where(and(eq(subscriptions.userId, user.id), eq(subscriptions.status, 'ACTIVE')))
+      .orderBy(desc(subscriptions.createdAt))
+      .limit(1);
+
+    const [userRecord] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
+    const [activePlan] = await db
+      .select()
+      .from(plans)
+      .where(eq(plans.slug, userRecord?.planSlug || 'free'))
+      .limit(1);
+
+    return res.json({
+      subscription: sub || null,
+      currentPlan: activePlan || null,
+      planSlug: userRecord?.planSlug || 'free',
+    });
+  } catch (err) {
+    console.error('Get subscription error:', err);
+    return res.status(500).json({ error: 'Erro ao obter dados de assinatura.' });
   }
 });
 

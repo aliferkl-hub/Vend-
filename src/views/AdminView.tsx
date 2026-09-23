@@ -43,6 +43,14 @@ export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNaviga
   const [subscriptionsList, setSubscriptionsList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Mercado Pago Health & Configuration
+  const [mpHealth, setMpHealth] = useState<any>(null);
+  const [mpTokenInput, setMpTokenInput] = useState('');
+  const [mpKeyInput, setMpKeyInput] = useState('');
+  const [mpSaving, setMpSaving] = useState(false);
+  const [mpTesting, setMpTesting] = useState(false);
+  const [mpFeedback, setMpFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
   // Clear demo data
   const [clearingDemo, setClearingDemo] = useState(false);
 
@@ -69,10 +77,94 @@ export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNaviga
       if (resStores.ok) setStoresList(await resStores.json());
       if (resProducts.ok) setProductsList(await resProducts.json());
       if (resSubs.ok) setSubscriptionsList(await resSubs.json());
+
+      // Fetch Mercado Pago health
+      await fetchMpHealth();
     } catch (e) {
       console.error('Error fetching admin data:', e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchMpHealth = async () => {
+    try {
+      const res = await fetch('/api/admin/payments/mercadopago/health');
+      if (res.ok) {
+        const data = await res.json();
+        setMpHealth(data);
+      }
+    } catch (e) {
+      console.error('Error fetching MP health:', e);
+    }
+  };
+
+  const handleTestMpConnection = async () => {
+    setMpTesting(true);
+    setMpFeedback(null);
+    try {
+      const res = await fetch('/api/admin/payments/mercadopago/test-connection', {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (data.connected) {
+        setMpFeedback({
+          type: 'success',
+          text: `Conexão bem-sucedida com Mercado Pago! Conta: ${data.nickname || data.email || 'Conta Oficial'} (Collector ID: ${data.collectorId}).`,
+        });
+      } else {
+        setMpFeedback({
+          type: 'error',
+          text: `Falha no teste de conexão: ${data.error || 'Credencial não aceita pela API do Mercado Pago.'}`,
+        });
+      }
+      await fetchMpHealth();
+    } catch {
+      setMpFeedback({
+        type: 'error',
+        text: 'Erro de comunicação ao testar endpoint do Mercado Pago.',
+      });
+    } finally {
+      setMpTesting(false);
+    }
+  };
+
+  const handleSaveMpCredentials = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!mpTokenInput.trim()) {
+      setMpFeedback({ type: 'error', text: 'Por favor, insira o Access Token do Mercado Pago.' });
+      return;
+    }
+    setMpSaving(true);
+    setMpFeedback(null);
+    try {
+      const res = await fetch('/api/admin/payments/mercadopago/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accessToken: mpTokenInput.trim(),
+          publicKey: mpKeyInput.trim() || undefined,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setMpFeedback({
+          type: 'success',
+          text: `Credenciais verificadas e salvas com sucesso! Conectado à conta: ${data.account?.nickname || data.account?.email || 'Mercado Pago Oficial'}.`,
+        });
+        setMpTokenInput('');
+        await fetchMpHealth();
+      } else {
+        setMpFeedback({
+          type: 'error',
+          text: data.error || 'Erro ao validar credenciais do Mercado Pago.',
+        });
+      }
+    } catch {
+      setMpFeedback({ type: 'error', text: 'Erro de conexão ao salvar credenciais.' });
+    } finally {
+      setMpSaving(false);
     }
   };
 
@@ -586,6 +678,172 @@ export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNaviga
       {/* TAB 3: FINANCE, PIX & MERCADO PAGO */}
       {activeTab === 'FINANCE_PIX' && (
         <div className="space-y-6">
+          {/* Mercado Pago Live Health Status Card */}
+          <div className="bg-gradient-to-r from-[#0B192C] to-[#162A45] rounded-3xl p-6 text-white border border-slate-800 shadow-xl space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-white/10">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-sky-500/20 border border-sky-500/30 flex items-center justify-center text-sky-400">
+                  <CreditCard className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black">Mercado Pago — Gateway de Produção</h3>
+                  <p className="text-xs text-slate-300">
+                    Fonte de verdade para cobranças reais, Pix instantâneo e Checkout Pro
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {mpHealth?.status === 'HEALTHY' ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                    <CheckCircle className="w-4 h-4" />
+                    <span>Conectado (Produção Oficial)</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                    <AlertCircle className="w-4 h-4" />
+                    <span>{mpHealth?.configured ? 'Falha de Conexão' : 'Token Pendente'}</span>
+                  </span>
+                )}
+                <button
+                  onClick={handleTestMpConnection}
+                  disabled={mpTesting}
+                  className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 transition text-xs font-bold flex items-center gap-1.5 border border-white/10 disabled:opacity-50 cursor-pointer"
+                  title="Testar Conexão Oficial no endpoint /users/me do Mercado Pago"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${mpTesting ? 'animate-spin' : ''}`} />
+                  <span>{mpTesting ? 'Testando...' : 'Testar Conexão Real'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Account Details & Diagnostics */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+              <div className="bg-white/5 border border-white/10 p-3 rounded-2xl">
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">Status do Token</span>
+                <span className={`font-black text-sm block mt-0.5 ${mpHealth?.configured ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {mpHealth?.configured ? 'Access Token configurado ✓' : 'Access Token não configurado'}
+                </span>
+                <span className="text-[10px] text-slate-400 block mt-0.5">
+                  {mpHealth?.source === 'ENV' ? 'Via Variável de Ambiente (Secrets)' : mpHealth?.source === 'DATABASE' ? 'Criptografado (AES-256-GCM)' : 'Pendente'}
+                </span>
+              </div>
+
+              <div className="bg-white/5 border border-white/10 p-3 rounded-2xl">
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">Titular da Conta MP</span>
+                <span className="font-bold text-white text-sm truncate block mt-0.5">
+                  {mpHealth?.apiConnection?.nickname || mpHealth?.apiConnection?.email || 'Não Identificado'}
+                </span>
+              </div>
+
+              <div className="bg-white/5 border border-white/10 p-3 rounded-2xl">
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">Collector ID (Vendedor)</span>
+                <span className="font-bold text-white text-sm truncate block mt-0.5 font-mono">
+                  {mpHealth?.apiConnection?.collectorId || '---'}
+                </span>
+              </div>
+
+              <div className="bg-white/5 border border-white/10 p-3 rounded-2xl">
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">Liquidação Pix Instantânea</span>
+                <span className="font-bold text-sky-400 text-sm block mt-0.5">
+                  Ativa (Automação 24/7)
+                </span>
+              </div>
+            </div>
+
+            {/* Webhook Endpoint Display */}
+            <div className="p-3.5 bg-white/5 border border-white/10 rounded-2xl text-xs space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-300">URL do Webhook Mercado Pago:</span>
+                <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">
+                  Status: {mpHealth?.webhook?.status || 'Ativo'}
+                </span>
+              </div>
+              <div className="font-mono text-xs bg-slate-950/60 p-2 rounded-xl text-slate-300 border border-white/5 select-all">
+                {mpHealth?.webhook?.configuredUrl || `${window.location.origin}/api/payments/mercadopago/webhook`}
+              </div>
+            </div>
+          </div>
+
+          {/* Form to Configure Mercado Pago Credentials */}
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-2xs space-y-4">
+            <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+              <KeyRound className="w-5 h-5 text-emerald-600" />
+              <span>Configurar Credenciais do Mercado Pago (Master Owner)</span>
+            </h3>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              O segredo pode ser configurado via <strong>Variável de Ambiente</strong> (<code className="font-mono">MERCADOPAGO_ACCESS_TOKEN</code>) ou inserido abaixo.
+              Caso salvo pelo painel, ele é gravado com <strong>criptografia autenticada AES-256-GCM</strong> em repouso no banco de dados e <strong>nunca é exibido, retornado por APIs ou registrado em logs</strong>.
+            </p>
+
+            {mpFeedback && (
+              <div
+                className={`p-3.5 rounded-2xl text-xs flex items-center gap-2 ${
+                  mpFeedback.type === 'success'
+                    ? 'bg-emerald-50 text-emerald-900 border border-emerald-300'
+                    : 'bg-rose-50 text-rose-900 border border-rose-300'
+                }`}
+              >
+                {mpFeedback.type === 'success' ? (
+                  <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                )}
+                <span>{mpFeedback.text}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveMpCredentials} className="space-y-3">
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-slate-700">
+                  Access Token de Produção (MERCADOPAGO_ACCESS_TOKEN) *
+                </label>
+                <input
+                  type="password"
+                  placeholder="APP_USR-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-xxxxxx"
+                  required
+                  value={mpTokenInput}
+                  onChange={(e) => setMpTokenInput(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-slate-700">
+                  Public Key (MERCADOPAGO_PUBLIC_KEY — Opcional para Frontend)
+                </label>
+                <input
+                  type="text"
+                  placeholder="APP_USR-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                  value={mpKeyInput}
+                  onChange={(e) => setMpKeyInput(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono"
+                />
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={mpSaving}
+                  className="px-6 py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs shadow-md transition active:scale-[0.99] disabled:opacity-50 cursor-pointer flex items-center gap-2"
+                >
+                  {mpSaving ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin text-slate-950" />
+                      <span>Validando e Salvando Credenciais...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-4 h-4 text-slate-950" />
+                      <span>Salvar e Testar Credenciais no Mercado Pago</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Revenue Statistics Grid */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-white p-5 rounded-2xl border border-slate-200">
               <span className="text-xs text-slate-400 uppercase font-bold">Total Arrecadado em Comissões</span>
@@ -604,9 +862,11 @@ export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNaviga
             </div>
 
             <div className="bg-white p-5 rounded-2xl border border-emerald-200">
-              <span className="text-xs text-emerald-700 uppercase font-bold">Chave PIX Exclusiva Planos</span>
-              <div className="text-2xl font-black text-slate-900 mt-1 font-mono">11973479473</div>
-              <p className="text-xs text-slate-500 mt-1">Celular exclusivo para planos</p>
+              <span className="text-xs text-emerald-700 uppercase font-bold">Receita Total de Planos</span>
+              <div className="text-2xl font-black text-slate-900 mt-1">
+                {((m?.plansRevenueCents ?? 0) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </div>
+              <p className="text-xs text-slate-500 mt-1">Assinaturas pagas via Mercado Pago</p>
             </div>
           </div>
 
@@ -614,7 +874,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNaviga
           <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-2xs space-y-4">
             <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
               <DollarSign className="w-5 h-5 text-emerald-600" />
-              <span>Relatório Completo de Pagamentos (PIX & Mercado Pago)</span>
+              <span>Transações Mercado Pago & PIX no Banco de Dados</span>
             </h3>
 
             <div className="overflow-x-auto">
@@ -622,6 +882,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNaviga
                 <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200">
                   <tr>
                     <th className="p-3">Ref. Externa</th>
+                    <th className="p-3">ID Mercado Pago</th>
                     <th className="p-3">Tipo</th>
                     <th className="p-3">Método</th>
                     <th className="p-3">Valor</th>
@@ -630,16 +891,17 @@ export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNaviga
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {metrics?.recentPayments?.map((p: any) => (
+                  {(mpHealth?.recentPayments || metrics?.recentPayments)?.map((p: any) => (
                     <tr key={p.id} className="hover:bg-slate-50">
                       <td className="p-3 font-mono font-bold text-slate-900">{p.externalReference}</td>
+                      <td className="p-3 font-mono text-slate-600">{p.mpPaymentId || '---'}</td>
                       <td className="p-3">
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-800">
                           {p.paymentType === 'SUBSCRIPTION' ? 'ASSINATURA PLANO' : 'PEDIDO MARKETPLACE'}
                         </span>
                       </td>
                       <td className="p-3 font-bold text-slate-700">
-                        {p.paymentMethod === 'PIX' ? 'PIX (Chave 11973479473)' : 'MERCADO PAGO'}
+                        {p.paymentMethod || 'MERCADO PAGO'}
                       </td>
                       <td className="p-3 font-bold text-slate-900">
                         {(p.amountCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
@@ -660,9 +922,9 @@ export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNaviga
                       </td>
                     </tr>
                   ))}
-                  {(!metrics?.recentPayments || metrics.recentPayments.length === 0) && (
+                  {(!mpHealth?.recentPayments && !metrics?.recentPayments) && (
                     <tr>
-                      <td colSpan={6} className="p-6 text-center text-slate-400">
+                      <td colSpan={7} className="p-6 text-center text-slate-400">
                         Nenhum pagamento registrado.
                       </td>
                     </tr>

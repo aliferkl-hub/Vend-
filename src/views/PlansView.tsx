@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Check,
   Zap,
@@ -14,6 +14,9 @@ import {
   Store,
   TrendingUp,
   X,
+  CreditCard,
+  RefreshCw,
+  ExternalLink,
 } from 'lucide-react';
 import { Plan } from '../types.ts';
 import { useAuth } from '../context/AuthContext.tsx';
@@ -24,8 +27,8 @@ interface PlansViewProps {
 
 interface PixPaymentModalData {
   paymentId: number;
+  mpPaymentId?: string;
   externalReference: string;
-  pixKey: string;
   plan: {
     id: number;
     name: string;
@@ -36,6 +39,7 @@ interface PixPaymentModalData {
   amountFormatted: string;
   copiaECola: string;
   qrCodeUrl: string;
+  ticketUrl?: string;
   status: string;
 }
 
@@ -45,12 +49,14 @@ export const PlansView: React.FC<PlansViewProps> = ({ onNavigate }) => {
   const [loading, setLoading] = useState(true);
   const [subscribingSlug, setSubscribingSlug] = useState<string | null>(null);
 
-  // Dedicated PIX Modal state exclusively for plan subscriptions
+  // Dedicated Real Mercado Pago Modal state
   const [pixModalData, setPixModalData] = useState<PixPaymentModalData | null>(null);
   const [pixCopied, setPixCopied] = useState(false);
-  const [keyCopied, setKeyCopied] = useState(false);
-  const [confirmingPix, setConfirmingPix] = useState(false);
+  const [checkingPayment, setCheckingPayment] = useState(false);
+  const [statusFeedback, setStatusFeedback] = useState<string | null>(null);
   const [activationSuccess, setActivationSuccess] = useState<string | null>(null);
+
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchPlans = async () => {
     try {
@@ -69,6 +75,47 @@ export const PlansView: React.FC<PlansViewProps> = ({ onNavigate }) => {
   useEffect(() => {
     fetchPlans();
   }, []);
+
+  // Real-time Polling while modal is open
+  useEffect(() => {
+    if (!pixModalData || activationSuccess) {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+      return;
+    }
+
+    const checkStatus = async () => {
+      try {
+        const res = await fetch('/api/plans/confirm-pix', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            paymentId: pixModalData.paymentId,
+            planSlug: pixModalData.plan.slug,
+          }),
+        });
+
+        const data = await res.json();
+        if (res.ok && data.approved) {
+          if (pollingRef.current) clearInterval(pollingRef.current);
+          setActivationSuccess(data.message || `Plano ${pixModalData.plan.name} ativado com sucesso!`);
+          await refreshUser();
+          setTimeout(() => {
+            setPixModalData(null);
+            setActivationSuccess(null);
+          }, 3500);
+        }
+      } catch (err) {
+        // Silently ignore polling transient errors
+      }
+    };
+
+    // Poll every 3.5 seconds
+    pollingRef.current = setInterval(checkStatus, 3500);
+
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, [pixModalData, activationSuccess]);
 
   const handleSubscribeClick = async (plan: Plan) => {
     if (!user) {
@@ -106,29 +153,55 @@ export const PlansView: React.FC<PlansViewProps> = ({ onNavigate }) => {
       return;
     }
 
-    // 2. PAID PLAN: opens dedicated PIX modal with key 11973479473 & QR Code
+    // 2. PAID PLAN: opens real Mercado Pago PIX modal
     setSubscribingSlug(plan.slug);
     try {
       const res = await fetch('/api/plans/create-pix', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planId: plan.id, planSlug: plan.slug }),
+        body: JSON.stringify({
+          planId: plan.id,
+          planSlug: plan.slug,
+          payer: {
+            email: user.email,
+            name: user.name,
+          },
+        }),
       });
 
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || 'Erro ao gerar pagamento PIX do plano.');
+        alert(data.error || 'Erro ao gerar pagamento PIX do plano via Mercado Pago.');
         return;
       }
 
       setPixModalData(data);
       setPixCopied(false);
-      setKeyCopied(false);
+      setStatusFeedback(null);
       setActivationSuccess(null);
     } catch {
       alert('Erro de conexão ao gerar PIX do plano.');
     } finally {
       setSubscribingSlug(null);
+    }
+  };
+
+  const handlePayViaCardPreference = async () => {
+    if (!pixModalData) return;
+    try {
+      const res = await fetch('/api/plans/create-preference', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planId: pixModalData.plan.id, planSlug: pixModalData.plan.slug }),
+      });
+      const data = await res.json();
+      if (res.ok && data.initPoint) {
+        window.location.href = data.initPoint;
+      } else {
+        alert(data.error || 'Erro ao abrir checkout do Mercado Pago.');
+      }
+    } catch {
+      alert('Erro de conexão com o Mercado Pago.');
     }
   };
 
@@ -139,16 +212,11 @@ export const PlansView: React.FC<PlansViewProps> = ({ onNavigate }) => {
     setTimeout(() => setPixCopied(false), 3000);
   };
 
-  const handleCopyPixKey = () => {
+  const handleManualCheckPayment = async () => {
     if (!pixModalData) return;
-    navigator.clipboard.writeText(pixModalData.pixKey);
-    setKeyCopied(true);
-    setTimeout(() => setKeyCopied(false), 3000);
-  };
+    setCheckingPayment(true);
+    setStatusFeedback(null);
 
-  const handleConfirmPixPayment = async () => {
-    if (!pixModalData) return;
-    setConfirmingPix(true);
     try {
       const res = await fetch('/api/plans/confirm-pix', {
         method: 'POST',
@@ -160,20 +228,20 @@ export const PlansView: React.FC<PlansViewProps> = ({ onNavigate }) => {
       });
 
       const data = await res.json();
-      if (res.ok) {
+      if (res.ok && data.approved) {
         setActivationSuccess(data.message || `Plano ${pixModalData.plan.name} ativado com sucesso!`);
         await refreshUser();
         setTimeout(() => {
           setPixModalData(null);
           setActivationSuccess(null);
-        }, 2500);
+        }, 3000);
       } else {
-        alert(data.error || 'Não foi possível confirmar o pagamento. Tente novamente.');
+        setStatusFeedback(data.message || 'O Mercado Pago ainda está aguardando o pagamento.');
       }
     } catch {
-      alert('Erro de conexão ao validar pagamento.');
+      setStatusFeedback('Erro de conexão ao verificar status no Mercado Pago.');
     } finally {
-      setConfirmingPix(false);
+      setCheckingPayment(false);
     }
   };
 
@@ -189,7 +257,7 @@ export const PlansView: React.FC<PlansViewProps> = ({ onNavigate }) => {
           Crie sua loja com IA, reduza taxas e escale suas vendas
         </h1>
         <p className="text-base sm:text-lg text-slate-600 leading-relaxed">
-          Planos transparentes pensados para quem quer começar ou transformar seu negócio em uma máquina de vendas com Inteligência Artificial e fornecedores integrados.
+          Planos transparentes com pagamento integrado ao Mercado Pago (Pix instantâneo e Cartão). Liberação automática após a confirmação.
         </p>
       </div>
 
@@ -198,175 +266,148 @@ export const PlansView: React.FC<PlansViewProps> = ({ onNavigate }) => {
         <div className="text-center text-slate-400 py-16 text-sm">Carregando planos...</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {plans.map((plan) => {
-            const isCurrent = user?.planSlug === plan.slug;
-            const isLegendary = plan.slug === 'lendario';
-            const isPremium = plan.slug === 'premium';
-            const isBasic = plan.slug === 'basico';
+          {plans.map((p) => {
+            const isCurrent = user?.planSlug === p.slug;
+            const isPro = p.slug === 'pro';
+            const isVip = p.slug === 'vip';
+            const isStart = p.slug === 'start';
+            const isFree = p.slug === 'free';
 
-            const priceFormatted =
-              plan.priceCents === 0
-                ? 'Grátis'
-                : (plan.priceCents / 100).toLocaleString('pt-BR', {
-                    style: 'currency',
-                    currency: 'BRL',
-                  });
+            const features: string[] = Array.isArray(p.features)
+              ? p.features
+              : typeof p.features === 'string'
+              ? JSON.parse(p.features || '[]')
+              : [];
 
             return (
               <div
-                key={plan.id}
-                id={`plan-card-${plan.slug}`}
-                className={`rounded-3xl p-6 transition-all flex flex-col justify-between border-2 relative ${
-                  isLegendary
-                    ? 'bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white border-amber-500/80 shadow-2xl'
-                    : isPremium
-                    ? 'bg-white border-sky-500 shadow-xl ring-2 ring-sky-400/20'
-                    : isBasic
-                    ? 'bg-white border-emerald-500/50 shadow-md'
-                    : 'bg-white border-slate-200 shadow-sm'
+                key={p.id}
+                id={`plan-card-${p.slug}`}
+                className={`relative rounded-3xl p-6 flex flex-col justify-between transition-all duration-300 ${
+                  isPro
+                    ? 'bg-gradient-to-b from-[#0B192C] to-[#162A45] text-white shadow-xl shadow-sky-950/20 border-2 border-emerald-500 scale-[1.02]'
+                    : isVip
+                    ? 'bg-gradient-to-b from-purple-950 to-slate-900 text-white shadow-lg border border-purple-500/40'
+                    : 'bg-white border border-slate-200 shadow-2xs hover:shadow-md'
                 }`}
               >
-                {/* Popular Pill */}
-                {isPremium && (
-                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-sky-500 to-indigo-600 text-white text-[11px] font-black uppercase tracking-widest px-4 py-1 rounded-full shadow-md">
-                    Mais Popular
-                  </div>
-                )}
-                {isLegendary && (
-                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 text-[11px] font-black uppercase tracking-widest px-4 py-1 rounded-full shadow-md">
-                    Alta Performance
+                {/* Popular Badge */}
+                {isPro && (
+                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-emerald-500 text-slate-950 px-3.5 py-1 rounded-full text-[11px] font-black tracking-wider uppercase shadow-md flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 fill-slate-950" />
+                    <span>Mais Escolhido</span>
                   </div>
                 )}
 
-                <div className="space-y-5">
-                  {/* Badge & Plan Name */}
+                {/* Plan Header */}
+                <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <span
-                      className={`text-xs font-black uppercase tracking-wider px-3 py-1 rounded-lg ${
-                        isLegendary
-                          ? 'bg-amber-400 text-slate-950'
-                          : isPremium
-                          ? 'bg-sky-500 text-white'
-                          : isBasic
-                          ? 'bg-emerald-500 text-slate-950'
+                      className={`text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg ${
+                        isPro
+                          ? 'bg-emerald-500/20 text-emerald-400'
+                          : isVip
+                          ? 'bg-purple-500/20 text-purple-300'
+                          : isStart
+                          ? 'bg-sky-100 text-sky-800'
                           : 'bg-slate-100 text-slate-700'
                       }`}
                     >
-                      {plan.name}
+                      {p.name}
                     </span>
-
-                    {isCurrent && (
-                      <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-700 border border-emerald-500/40">
-                        Plano Atual
-                      </span>
-                    )}
+                    {isPro && <Crown className="w-5 h-5 text-emerald-400" />}
+                    {isVip && <Zap className="w-5 h-5 text-purple-400" />}
                   </div>
 
                   {/* Price */}
                   <div>
-                    <div className="flex items-baseline gap-1.5">
-                      <span
-                        className={`text-3xl sm:text-4xl font-black ${
-                          isLegendary ? 'text-white' : 'text-slate-950'
-                        }`}
-                      >
-                        {priceFormatted}
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-3xl sm:text-4xl font-black">
+                        {(p.priceCents / 100).toLocaleString('pt-BR', {
+                          style: 'currency',
+                          currency: 'BRL',
+                        })}
                       </span>
-                      {plan.priceCents > 0 && (
-                        <span
-                          className={`text-xs font-semibold ${
-                            isLegendary ? 'text-slate-400' : 'text-slate-500'
-                          }`}
-                        >
-                          /mês
-                        </span>
-                      )}
+                      <span className={`text-xs ${isPro || isVip ? 'text-slate-400' : 'text-slate-500'}`}>
+                        /mês
+                      </span>
                     </div>
-                    <p
-                      className={`text-xs mt-1.5 font-medium ${
-                        isLegendary ? 'text-slate-300' : 'text-slate-600'
-                      }`}
-                    >
-                      Taxa de comissão por venda: <strong>{plan.commissionPercent}%</strong>
+                    <p className={`text-xs mt-1.5 ${isPro || isVip ? 'text-slate-300' : 'text-slate-500'}`}>
+                      {p.description}
                     </p>
                   </div>
 
-                  {/* Limites e Recursos */}
-                  <div className={`pt-4 border-t ${isLegendary ? 'border-slate-800' : 'border-slate-100'} space-y-3 text-xs`}>
-                    <div className="font-bold text-[11px] uppercase tracking-wider text-slate-400">
-                      Limites & Funcionalidades
-                    </div>
-
-                    <div className="flex items-start gap-2">
-                      <Check className={`w-4 h-4 shrink-0 mt-0.5 ${isLegendary ? 'text-amber-400' : 'text-emerald-500'}`} />
-                      <span>
-                        Até <strong>{plan.maxActiveListings} anúncios</strong> ativos no marketplace
+                  {/* Highlights Pill */}
+                  <div
+                    className={`p-3 rounded-2xl text-xs space-y-1 ${
+                      isPro || isVip ? 'bg-white/5 border border-white/10' : 'bg-slate-50 border border-slate-100'
+                    }`}
+                  >
+                    <div className="flex justify-between font-semibold">
+                      <span>Comissão por Venda:</span>
+                      <span className={isPro ? 'text-emerald-400 font-bold' : isVip ? 'text-purple-300 font-bold' : 'text-slate-900 font-bold'}>
+                        {p.commissionPercent}%
                       </span>
                     </div>
-
-                    <div className="flex items-start gap-2">
-                      <Check className={`w-4 h-4 shrink-0 mt-0.5 ${isLegendary ? 'text-amber-400' : 'text-emerald-500'}`} />
-                      <span>
-                        {plan.priceCents === 0
-                          ? 'Vitrine padrão no marketplace'
-                          : 'Criação de Loja Virtual Própria com IA'}
+                    <div className="flex justify-between font-semibold">
+                      <span>Anúncios Ativos:</span>
+                      <span className="font-bold">
+                        {p.maxActiveListings >= 9999 ? 'Ilimitados' : `Até ${p.maxActiveListings}`}
                       </span>
                     </div>
+                  </div>
 
-                    {plan.priceCents > 0 && (
-                      <div className="flex items-start gap-2">
-                        <Check className={`w-4 h-4 shrink-0 mt-0.5 ${isLegendary ? 'text-amber-400' : 'text-emerald-500'}`} />
-                        <span>Acesso ao Catálogo Homologado VEND+</span>
-                      </div>
-                    )}
-
-                    {isPremium || isLegendary ? (
-                      <div className="flex items-start gap-2">
-                        <Sparkles className="w-4 h-4 shrink-0 mt-0.5 text-sky-400" />
-                        <span>
-                          <strong>Suíte Comercial IA:</strong> Copy, títulos SEO, posts & anúncios
-                        </span>
-                      </div>
-                    ) : null}
-
-                    {isLegendary && (
-                      <div className="flex items-start gap-2 text-amber-300 font-bold">
-                        <Crown className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
-                        <span>Prioridade máxima no algoritmo e gerente de conta</span>
-                      </div>
-                    )}
+                  {/* Features List */}
+                  <div className="space-y-2.5 pt-2">
+                    <span className={`text-[11px] font-bold uppercase tracking-wider block ${isPro || isVip ? 'text-slate-400' : 'text-slate-400'}`}>
+                      Recursos inclusos:
+                    </span>
+                    <ul className="space-y-2">
+                      {features.map((feat, idx) => (
+                        <li key={idx} className="flex items-start gap-2 text-xs leading-snug">
+                          <Check className={`w-4 h-4 mt-0.5 flex-shrink-0 ${isPro ? 'text-emerald-400' : isVip ? 'text-purple-400' : 'text-emerald-600'}`} />
+                          <span className={isPro || isVip ? 'text-slate-200' : 'text-slate-700'}>{feat}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 </div>
 
-                {/* Action button */}
-                <div className="pt-6 mt-4">
-                  <button
-                    id={`subscribe-plan-btn-${plan.slug}`}
-                    disabled={isCurrent || subscribingSlug === plan.slug}
-                    onClick={() => handleSubscribeClick(plan)}
-                    className={`w-full py-3.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                      isCurrent
-                        ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
-                        : isLegendary
-                        ? 'bg-gradient-to-r from-amber-400 to-amber-300 hover:from-amber-300 hover:to-amber-200 text-slate-950 shadow-lg'
-                        : isPremium
-                        ? 'bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white shadow-lg'
-                        : isBasic
-                        ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold'
-                        : 'bg-slate-900 hover:bg-slate-800 text-white'
-                    }`}
-                  >
-                    <span>
-                      {isCurrent
-                        ? 'Seu Plano Atual'
-                        : subscribingSlug === plan.slug
-                        ? 'Processando...'
-                        : plan.priceCents === 0
-                        ? 'Permanecer no Grátis'
-                        : `Assinar ${plan.name} via PIX`}
-                    </span>
-                    {!isCurrent && <ArrowRight className="w-4 h-4" />}
-                  </button>
+                {/* Action Button */}
+                <div className="pt-6">
+                  {isCurrent ? (
+                    <button
+                      disabled
+                      className="w-full py-3 rounded-xl text-xs font-bold bg-slate-200 text-slate-500 cursor-not-allowed flex items-center justify-center gap-1.5"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>Seu Plano Atual</span>
+                    </button>
+                  ) : (
+                    <button
+                      id={`subscribe-btn-${p.slug}`}
+                      disabled={subscribingSlug === p.slug}
+                      onClick={() => handleSubscribeClick(p)}
+                      className={`w-full py-3 rounded-xl text-xs font-black shadow-sm transition-all duration-200 flex items-center justify-center gap-1.5 cursor-pointer active:scale-[0.98] ${
+                        isPro
+                          ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black shadow-emerald-500/25'
+                          : isVip
+                          ? 'bg-purple-500 hover:bg-purple-400 text-white font-black shadow-purple-500/25'
+                          : isFree
+                          ? 'bg-slate-100 hover:bg-slate-200 text-slate-800'
+                          : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
+                      }`}
+                    >
+                      <span>
+                        {subscribingSlug === p.slug
+                          ? 'Processando no Mercado Pago...'
+                          : isFree
+                          ? 'Ativar Grátis'
+                          : 'Assinar com Mercado Pago (Pix)'}
+                      </span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -374,58 +415,18 @@ export const PlansView: React.FC<PlansViewProps> = ({ onNavigate }) => {
         </div>
       )}
 
-      {/* Value Proposition & Security Notice */}
-      <div className="bg-slate-900 text-white rounded-3xl p-8 border border-slate-800 shadow-xl max-w-5xl mx-auto">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center md:text-left">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
-              <Shield className="w-5 h-5" />
-            </div>
-            <div>
-              <h4 className="font-bold text-sm">Liberação Imediata via PIX</h4>
-              <p className="text-xs text-slate-400 mt-1">
-                Ao confirmar o pagamento do plano, os recursos premium são ativados no mesmo instante na sua conta.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center shrink-0">
-              <Store className="w-5 h-5" />
-            </div>
-            <div>
-              <h4 className="font-bold text-sm">Sua Loja Completa em 2 Minutos</h4>
-              <p className="text-xs text-slate-400 mt-1">
-                A IA cria identidade, banners e cadastra produtos com a sua margem de lucro personalizada.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
-              <TrendingUp className="w-5 h-5" />
-            </div>
-            <div>
-              <h4 className="font-bold text-sm">Sem Fidelidade ou Multas</h4>
-              <p className="text-xs text-slate-400 mt-1">
-                Alterne ou cancele seu plano quando quiser. Total transparência para o seu negócio crescer.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* DEDICATED PIX PAYMENT MODAL FOR PLANS (Section 4) */}
+      {/* REAL MERCADO PAGO PIX MODAL */}
       {pixModalData && (
         <div
-          id="plan-pix-modal"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in"
+          id="pix-payment-modal"
+          className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
         >
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-6 sm:p-7 space-y-5 relative max-h-[92vh] overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 relative my-8 animate-in fade-in zoom-in-95 duration-200">
             {/* Close */}
             <button
               onClick={() => setPixModalData(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              className="absolute top-5 right-5 text-slate-400 hover:text-slate-700 p-1.5 rounded-full hover:bg-slate-100 transition"
+              title="Fechar"
             >
               <X className="w-5 h-5" />
             </button>
@@ -434,90 +435,99 @@ export const PlansView: React.FC<PlansViewProps> = ({ onNavigate }) => {
             <div className="text-center space-y-1">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold">
                 <QrCode className="w-4 h-4 text-emerald-600" />
-                <span>Pagamento do Plano por PIX</span>
+                <span>Mercado Pago Oficial — PIX Instantâneo</span>
               </div>
               <h2 className="text-xl font-black text-slate-950 pt-1">
                 {pixModalData.plan.name} — {pixModalData.amountFormatted}
               </h2>
               <p className="text-xs text-slate-500">
-                Pague pelo aplicativo do seu banco para ativar sua assinatura.
+                Pague pelo aplicativo do seu banco para ativar sua assinatura automaticamente.
               </p>
             </div>
 
-            {/* Status: Aguardando Pagamento */}
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl flex items-center justify-center gap-2 text-amber-900 text-xs font-bold">
-              <div className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping" />
-              <span>Status: Aguardando pagamento</span>
+            {/* Status Live Indicator */}
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl flex items-center justify-between text-amber-900 text-xs font-bold">
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping" />
+                <span>Aguardando pagamento no banco</span>
+              </div>
+              <div className="flex items-center gap-1 text-[11px] text-amber-700 font-normal">
+                <RefreshCw className="w-3 h-3 animate-spin" />
+                <span>Auto-verificando</span>
+              </div>
             </div>
 
-            {/* QR Code */}
+            {/* Real Mercado Pago QR Code */}
             <div className="flex flex-col items-center justify-center p-4 bg-slate-50 rounded-2xl border border-slate-200">
               <img
                 src={pixModalData.qrCodeUrl}
-                alt="QR Code PIX do Plano"
+                alt="QR Code PIX Mercado Pago"
                 className="w-52 h-52 object-contain bg-white p-2 rounded-xl shadow-xs"
               />
-              <span className="text-[11px] text-slate-400 mt-2 font-medium">
-                Aponte a câmera no app do seu banco
+              <span className="text-[11px] text-slate-500 mt-2 font-medium">
+                Abra o app do seu banco e escaneie o QR Code
               </span>
             </div>
 
-            {/* Chave PIX Oficial */}
-            <div className="p-3 bg-slate-100 rounded-xl space-y-1.5">
-              <div className="flex items-center justify-between text-xs text-slate-600">
-                <span className="font-semibold">Chave PIX do Plano:</span>
-                <button
-                  onClick={handleCopyPixKey}
-                  className="text-emerald-600 hover:text-emerald-700 font-bold flex items-center gap-1 text-[11px]"
-                >
-                  <Copy className="w-3.5 h-3.5" />
-                  <span>{keyCopied ? 'Copiada!' : 'Copiar Chave'}</span>
-                </button>
-              </div>
-              <div className="font-mono text-xs font-black text-slate-900 bg-white p-2 rounded border border-slate-200 select-all">
-                {pixModalData.pixKey}
-              </div>
-            </div>
-
-            {/* Código PIX Copia e Cola */}
+            {/* Código PIX Copia e Cola Oficial */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs text-slate-600">
-                <span className="font-semibold">Código Pix Copia e Cola:</span>
+                <span className="font-semibold">Código Pix Copia e Cola Oficial:</span>
               </div>
               <button
                 id="copy-pix-code-btn"
                 onClick={handleCopyCopiaECola}
-                className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition active:scale-[0.99]"
+                className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition active:scale-[0.99] cursor-pointer"
               >
                 <Copy className="w-4 h-4" />
-                <span>{pixCopied ? 'Código PIX Copiado com Sucesso!' : 'Copiar Código PIX'}</span>
+                <span>{pixCopied ? 'Código PIX Copiado com Sucesso!' : 'Copiar Código PIX (Copia e Cola)'}</span>
               </button>
             </div>
 
+            {/* Feedback / Status */}
+            {statusFeedback && (
+              <div className="p-3 bg-sky-50 border border-sky-200 rounded-xl text-sky-900 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0 text-sky-600" />
+                <span>{statusFeedback}</span>
+              </div>
+            )}
+
             {/* Success Message */}
             {activationSuccess && (
-              <div className="p-3.5 bg-emerald-50 border border-emerald-300 rounded-2xl text-emerald-900 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+              <div className="p-4 bg-emerald-50 border border-emerald-300 rounded-2xl text-emerald-900 text-xs font-bold flex items-center gap-2 animate-in fade-in">
                 <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
                 <span>{activationSuccess}</span>
               </div>
             )}
 
-            {/* Confirmation Button */}
+            {/* Action Buttons */}
             <div className="pt-2 space-y-2">
               <button
-                id="confirm-pix-plan-btn"
-                disabled={confirmingPix || !!activationSuccess}
-                onClick={handleConfirmPixPayment}
-                className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-sm shadow-md transition-all active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
+                id="check-pix-status-btn"
+                disabled={checkingPayment || !!activationSuccess}
+                onClick={handleManualCheckPayment}
+                className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-sm shadow-md transition-all active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
-                {confirmingPix ? (
-                  <span>Validando e ativando plano...</span>
+                {checkingPayment ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin text-slate-950" />
+                    <span>Verificando no Mercado Pago...</span>
+                  </>
                 ) : (
                   <>
                     <CheckCircle className="w-4 h-4 text-slate-950" />
-                    <span>Já fiz o PIX — Confirmar e Ativar Plano</span>
+                    <span>Verificar Pagamento Agora</span>
                   </>
                 )}
+              </button>
+
+              <button
+                type="button"
+                onClick={handlePayViaCardPreference}
+                className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition"
+              >
+                <CreditCard className="w-4 h-4" />
+                <span>Pagar com Cartão / Checkout Pro Mercado Pago</span>
               </button>
 
               <button

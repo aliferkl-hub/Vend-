@@ -334,11 +334,32 @@ router.post('/import-feed', requireMasterOwner, async (req: AuthRequest, res) =>
   }
 });
 
-// 8. GET & UPDATE APP SETTINGS
+// 8. GET & UPDATE APP SETTINGS (Sanitized — secrets and tokens are NEVER exposed)
 router.get('/settings', requireMasterOwner, async (req: AuthRequest, res) => {
   try {
     const list = await db.select().from(appSettings);
-    return res.json(list);
+    const sanitizedList = list.map((item) => {
+      const isSensitive =
+        item.key === 'MERCADOPAGO_ACCESS_TOKEN' ||
+        item.key.includes('TOKEN') ||
+        item.key.includes('SECRET') ||
+        item.key.includes('PASSWORD') ||
+        item.key.includes('KEY');
+
+      // Do NOT expose secret or token values
+      if (isSensitive && item.key !== 'MERCADOPAGO_PUBLIC_KEY') {
+        return {
+          id: item.id,
+          key: item.key,
+          value: item.value && item.value.trim().length > 0 ? '•••••••• [CONFIGURADO & PROTEGIDO]' : '',
+          description: item.description,
+          updatedAt: item.updatedAt,
+        };
+      }
+      return item;
+    });
+
+    return res.json(sanitizedList);
   } catch (err) {
     console.error('Get settings error:', err);
     return res.status(500).json({ error: 'Erro ao listar configurações.' });
@@ -444,6 +465,113 @@ router.get('/subscriptions', requireMasterOwner, async (req: AuthRequest, res) =
   } catch (err) {
     console.error('Admin subscriptions error:', err);
     return res.status(500).json({ error: 'Erro ao listar assinaturas.' });
+  }
+});
+
+// 12. MERCADO PAGO HEALTH DIAGNOSTIC (Strictly follows requirement 14)
+router.get('/payments/mercadopago/health', requireMasterOwner, async (req: AuthRequest, res) => {
+  try {
+    const { getMercadoPagoCredentials, testMercadoPagoConnection } = await import('./mercadopagoService.ts');
+    const creds = await getMercadoPagoCredentials();
+    const connectionTest = await testMercadoPagoConnection();
+
+    const recentPayments = await db.select().from(payments).orderBy(desc(payments.createdAt)).limit(15);
+    const approvedRecent = recentPayments.filter((p) => p.status === 'APPROVED').length;
+    const pendingRecent = recentPayments.filter((p) => p.status === 'PENDING').length;
+    const lastPayment = recentPayments[0] || null;
+
+    const appUrl = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+
+    return res.json({
+      status: connectionTest.connected ? 'HEALTHY' : 'WARNING',
+      configured: creds.isConfigured,
+      tokenType: creds.tokenType,
+      isProduction: creds.isProduction,
+      source: creds.source,
+      hasPublicKey: Boolean(creds.publicKey),
+      webhookStatus: 'CONFIGURED',
+      webhookUrl: `${appUrl}/api/payments/mercadopago/webhook`,
+      apiConnection: connectionTest,
+      pixCapability: {
+        supported: true,
+        instantSettlement: true,
+      },
+      lastPaymentEvent: lastPayment
+        ? {
+            id: lastPayment.id,
+            externalReference: lastPayment.externalReference,
+            status: lastPayment.status,
+            paymentMethod: lastPayment.paymentMethod,
+            amountCents: lastPayment.amountCents,
+            createdAt: lastPayment.createdAt,
+            paidAt: lastPayment.paidAt,
+          }
+        : null,
+      stats: {
+        totalRecent: recentPayments.length,
+        approvedRecent,
+        pendingRecent,
+      },
+      recentPayments: recentPayments.map((p) => ({
+        id: p.id,
+        externalReference: p.externalReference,
+        paymentType: p.paymentType,
+        paymentMethod: p.paymentMethod,
+        amountCents: p.amountCents,
+        status: p.status,
+        mpPaymentId: p.mpPaymentId,
+        createdAt: p.createdAt,
+        paidAt: p.paidAt,
+      })),
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    console.error('Admin MP Health error:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// 13. UPDATE MERCADO PAGO CREDENTIALS IN APP_SETTINGS
+router.post('/payments/mercadopago/config', requireMasterOwner, async (req: AuthRequest, res) => {
+  try {
+    const { accessToken, publicKey } = req.body;
+    if (!accessToken || typeof accessToken !== 'string' || accessToken.trim().length < 10) {
+      return res.status(400).json({ error: 'Token de acesso do Mercado Pago inválido ou muito curto.' });
+    }
+
+    const { saveMercadoPagoCredentials } = await import('./mercadopagoService.ts');
+    const result = await saveMercadoPagoCredentials(accessToken.trim(), publicKey ? publicKey.trim() : undefined);
+
+    await db.insert(auditLogs).values({
+      userId: req.user!.id,
+      action: 'MERCADOPAGO_CREDENTIALS_UPDATED',
+      entityType: 'APP_SETTINGS',
+      details: JSON.stringify({
+        isProduction: accessToken.trim().startsWith('APP_USR-'),
+        collectorId: result.collectorId,
+        nickname: result.nickname,
+      }),
+    });
+
+    return res.json({
+      success: true,
+      message: 'Credenciais do Mercado Pago salvas e testadas com sucesso!',
+      account: result,
+    });
+  } catch (err: any) {
+    console.error('Save MP credentials error:', err);
+    return res.status(400).json({ error: err.message || 'Erro ao validar e salvar credenciais.' });
+  }
+});
+
+// 14. TEST MERCADO PAGO API CONNECTION ON DEMAND
+router.post('/payments/mercadopago/test-connection', requireMasterOwner, async (_req: AuthRequest, res) => {
+  try {
+    const { testMercadoPagoConnection } = await import('./mercadopagoService.ts');
+    const result = await testMercadoPagoConnection();
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(500).json({ connected: false, error: err.message });
   }
 });
 

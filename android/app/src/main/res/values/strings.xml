@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">VEND+</string>
+    <string name="title_activity_main">VEND+</string>
+    <string name="package_name">com.vendplus.app</string>
+    <string name="custom_url_scheme">com.vendplus.app</string>
+</resources>
