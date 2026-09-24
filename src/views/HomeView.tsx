@@ -153,7 +153,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   <div className="text-[10px] text-slate-400">Fornecedores</div>
                   <div className="font-bold text-sky-300 mt-0.5 flex items-center gap-1.5">
                     <Building2 className="w-3.5 h-3.5" />
-                    <span>Homologados VEND+</span>
+                    <span>Origem identificada</span>
                   </div>
                 </div>
 
@@ -211,7 +211,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             </div>
             <h3 className="font-bold text-sm text-slate-900">Produtos</h3>
             <p className="text-xs text-slate-500 mt-1">
-              Cadastre seus itens ou selecione do catálogo homologado.
+              Cadastre seus próprios itens ou conecte uma fonte real.
             </p>
           </div>
 
@@ -281,7 +281,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             </div>
             <h3 className="font-bold text-sm text-slate-900">Fornecedores</h3>
             <p className="text-xs text-slate-500 mt-1">
-              Parceiros homologados com produtos prontos para abastecer sua loja.
+              Nenhum fornecedor verificado disponível no momento. Adicione ou conecte uma fonte real.
             </p>
           </div>
 
@@ -401,7 +401,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   <CheckCircle className="w-3.5 h-3.5 text-sky-400" /> Suíte Comercial com IA
                 </li>
                 <li className="flex items-center gap-1.5">
-                  <CheckCircle className="w-3.5 h-3.5 text-sky-400" /> Fornecedores homologados
+                  <CheckCircle className="w-3.5 h-3.5 text-sky-400" /> Conexão com fornecedores reais
                 </li>
               </ul>
             </div>

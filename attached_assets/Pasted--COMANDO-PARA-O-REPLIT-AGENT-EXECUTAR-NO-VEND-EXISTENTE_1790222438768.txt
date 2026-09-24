@@ -1,0 +1,527 @@
+**COMANDO PARA O REPLIT AGENT — EXECUTAR NO VEND+ EXISTENTE**
+
+### REGRA MÁXIMA — NÃO RECRIAR, NÃO SUBSTITUIR E NÃO APAGAR O VEND+ EXISTENTE
+
+Trabalhe EXCLUSIVAMENTE no projeto VEND+ que já existe neste ambiente/repositório.
+
+**NÃO recrie o projeto do zero.**
+**NÃO substitua a arquitetura atual.**
+**NÃO remova módulos que já funcionam.**
+**NÃO faça downgrade.**
+**NÃO crie um novo VEND+.**
+
+Antes de alterar qualquer coisa, analise a estrutura atual e reutilize os componentes, rotas, banco/persistência, autenticação e armazenamento que já existem.
+
+### SISTEMAS QUE DEVEM PERMANECER FUNCIONANDO
+
+Preservar integralmente:
+
+* Marketplace VEND+
+* “VENDA. COMPRE. NEGOCIE. ENTREGUE.”
+* cadastro/login
+* usuários e perfis
+* vendedores
+* compradores
+* entregadores
+* anúncios
+* produtos
+* pedidos
+* negociações e renegociações
+* pagamentos
+* Mercado Pago
+* Pix
+* carteira
+* comissões
+* repasses
+* escrow/garantia
+* código de entrega de 4 dígitos
+* confirmação de recebimento
+* histórico financeiro
+* planos
+* Loja IA
+* Master Owner
+* painel administrativo
+* persistência existente
+* banco/dados existentes
+
+**NÃO alterar a lógica financeira existente nesta tarefa.**
+
+---
+
+# PARTE 1 — REMOVER CATÁLOGO DE FORNECEDORES FICTÍCIOS
+
+Existe atualmente uma área/catálogo que apresenta produtos como:
+
+* “Smartphone Galaxy S23 Ultra...”
+* “Notebook Dell Inspiron...”
+* “Fone Bluetooth...”
+* “Smart TV...”
+* “PlayStation 5...”
+* “Furadeira...”
+* “Jogo de ferramentas...”
+* “Bebedouro...”
+* outros produtos semelhantes
+
+e afirma que são:
+
+> “produtos verificados com fornecedores homologados pelo VEND+”
+
+### ISSO NÃO PODE SER CONSIDERADO VERDADEIRO SEM VERIFICAÇÃO REAL.
+
+Remova/desative qualquer catálogo pré-carregado, mock, seed, demo ou fictício que:
+
+* invente fornecedores;
+* invente produtos;
+* invente preços;
+* invente estoque;
+* invente disponibilidade;
+* invente CNPJ;
+* invente homologação;
+* use imagens genéricas do Unsplash como se fossem fotos reais do produto;
+* diga que um fornecedor foi homologado pelo VEND+ sem existir registro real de homologação.
+
+### NÃO APAGAR DADOS REAIS DE USUÁRIOS
+
+Antes de excluir qualquer registro:
+
+1. identificar `ownerId`;
+2. identificar `storeId`;
+3. identificar origem do registro;
+4. verificar se pertence a usuário real;
+5. preservar qualquer produto/loja criado por usuário real.
+
+Excluir somente registros comprovadamente:
+
+* demo;
+* seed;
+* mock;
+* catálogo fictício;
+* fornecedor fictício;
+* produto sem proprietário real;
+* conteúdo criado especificamente como exemplo/teste.
+
+Se houver dúvida sobre um registro, **NÃO excluir**.
+
+---
+
+# PARTE 2 — NUNCA MAIS INVENTAR FORNECEDORES
+
+O VEND+ NÃO deve criar automaticamente fornecedores ou produtos para preencher a tela.
+
+Se não existir fornecedor real verificado, mostrar:
+
+**“Nenhum fornecedor verificado disponível no momento.”**
+
+e uma opção:
+
+**“Adicionar fornecedor”**
+
+ou
+
+**“Conectar fornecedor”**
+
+### UM FORNECEDOR SÓ PODE SER CONSIDERADO VERIFICADO SE POSSUIR DADOS REAIS
+
+Criar/usar estrutura semelhante a:
+
+* `supplierId`
+* `businessName`
+* `legalName`
+* `cnpj` quando aplicável
+* `verificationStatus`
+* `verifiedAt`
+* `verificationSource`
+* `verificationEvidence`
+* `contact`
+* `catalogSource`
+* `createdAt`
+* `updatedAt`
+
+Estados permitidos:
+
+* `PENDING`
+* `VERIFIED`
+* `REJECTED`
+* `SUSPENDED`
+
+Somente `VERIFIED` pode aparecer como:
+
+**“Fornecedor verificado/homologado”**
+
+Nunca criar `VERIFIED` automaticamente.
+
+---
+
+# PARTE 3 — PRODUTOS DE FORNECEDORES
+
+Um produto de fornecedor só pode aparecer como produto real quando existir uma relação válida:
+
+`product.supplierId -> supplier.id`
+
+e o fornecedor estiver:
+
+`verificationStatus = VERIFIED`
+
+O produto deve possuir, quando disponível:
+
+* nome real;
+* SKU;
+* GTIN/EAN quando aplicável;
+* fornecedor;
+* preço real;
+* disponibilidade real;
+* estoque informado pela fonte;
+* data/hora da última atualização;
+* origem do catálogo;
+* mídia correspondente ao produto.
+
+Nunca inventar:
+
+* preço;
+* estoque;
+* fornecedor;
+* SKU;
+* GTIN;
+* disponibilidade;
+* avaliação;
+* foto;
+* descrição técnica.
+
+Se uma informação não existir, deixar ausente ou informar claramente:
+
+**“Informação não disponível.”**
+
+---
+
+# PARTE 4 — IMAGENS DE PRODUTOS
+
+NÃO utilizar:
+
+* Unsplash;
+* imagens genéricas;
+* imagens aleatórias;
+* imagens de outro produto;
+* placeholders apresentados como produto real.
+
+como se fossem fotos fiéis de um produto de fornecedor.
+
+Para produtos reais de fornecedores:
+
+* utilizar mídia fornecida pelo próprio fornecedor;
+* ou mídia oficialmente importada;
+* ou mídia carregada e armazenada pelo usuário/fornecedor;
+* preservar a associação correta entre imagem e produto.
+
+Não afirmar:
+
+**“100% fiel ao produto real”**
+
+sem evidência que permita sustentar essa afirmação.
+
+---
+
+# PARTE 5 — MERCADO LIVRE / SHOPEE E OUTROS
+
+NÃO criar produtos fictícios fingindo integração com Mercado Livre, Shopee ou qualquer outro fornecedor/plataforma.
+
+Se futuramente existir integração:
+
+* usar API oficial;
+* usar integração/autorização válida;
+* identificar claramente a origem;
+* armazenar os dados necessários;
+* respeitar os termos da integração.
+
+Sem integração real, NÃO simular catálogo.
+
+---
+
+# PARTE 6 — LOGO PERSONALIZÁVEL PARA TODA LOJA IA
+
+Agora implementar uma função completa para que **QUALQUER USUÁRIO POSSA ALTERAR A LOGO DA PRÓPRIA LOJA IA**.
+
+Na área de configuração/identidade da loja adicionar:
+
+**“Logo da loja”**
+
+com opções:
+
+* **Adicionar logo**
+* **Alterar logo**
+* **Remover logo**
+
+### FONTES PERMITIDAS
+
+O usuário deve poder escolher uma imagem:
+
+1. do celular;
+2. da galeria/fotos;
+3. dos arquivos/biblioteca do dispositivo;
+4. do computador;
+5. da câmera, quando o dispositivo permitir;
+6. de uma imagem que ele salvou anteriormente da internet;
+7. de uma imagem criada por ele;
+8. de qualquer arquivo de imagem selecionado pelo usuário.
+
+NÃO é necessário baixar automaticamente imagens da internet.
+
+Se o usuário encontrar uma imagem na internet, ele pode salvá-la no dispositivo e depois fazer upload normalmente.
+
+---
+
+# PARTE 7 — UPLOAD DA LOGO
+
+O upload deve aceitar formatos comuns de imagem, por exemplo:
+
+* JPG/JPEG
+* PNG
+* WEBP
+* SVG, se o sistema atual suportar SVG com segurança
+
+Validar no backend:
+
+* MIME type;
+* extensão;
+* tamanho máximo;
+* arquivo realmente ser uma imagem;
+* impedir upload de arquivo malicioso disfarçado.
+
+Criar preview antes de salvar.
+
+Permitir:
+
+* substituir;
+* remover;
+* reenviar;
+* visualizar.
+
+---
+
+# PARTE 8 — PERSISTÊNCIA DA LOGO
+
+A logo NÃO pode ficar dependente apenas de um link temporário ou URL externa.
+
+Após upload:
+
+1. armazenar persistentemente;
+2. associar à loja correta;
+3. salvar referência no banco;
+4. manter após logout;
+5. manter após login;
+6. manter após refresh;
+7. manter após reiniciar servidor;
+8. manter após deploy.
+
+Utilizar o mecanismo de armazenamento persistente que o VEND+ já possui.
+
+**NÃO trocar o banco ou armazenamento existente.**
+
+Se o projeto já possuir storage persistente configurado, reutilizar.
+
+---
+
+# PARTE 9 — ISOLAMENTO ENTRE LOJAS
+
+A logo deve pertencer à loja:
+
+`storeId`
+
+e ao proprietário:
+
+`ownerId`
+
+Uma loja NÃO pode conseguir alterar a logo de outra loja.
+
+Regras:
+
+* usuário comum → altera somente sua própria loja;
+* dono da loja → pode alterar sua logo;
+* Master Owner → pode administrar conforme as permissões administrativas existentes;
+* usuário sem autorização → `403 Forbidden`.
+
+Não confiar somente no frontend.
+
+Validar autorização no backend.
+
+---
+
+# PARTE 10 — EXIBIÇÃO DA LOGO
+
+Depois de salva, a logo deve aparecer automaticamente:
+
+* no cabeçalho da loja;
+* página pública da loja;
+* página inicial da loja;
+* catálogo da loja;
+* perfil/identidade da loja;
+* onde o VEND+ atualmente exibir a identidade visual da loja.
+
+Não alterar a identidade visual do Marketplace inteiro.
+
+**A logo é da loja, não do VEND+.**
+
+---
+
+# PARTE 11 — LOGO PADRÃO
+
+Se o usuário ainda não tiver logo:
+
+mostrar uma identidade padrão simples baseada no nome da loja.
+
+Mas deixar claro que é apenas:
+
+**“Logo padrão”**
+
+e não uma logo enviada pelo usuário.
+
+Assim que o usuário enviar uma imagem, substituir automaticamente pela logo personalizada.
+
+---
+
+# PARTE 12 — NÃO MISTURAR MARKETPLACE E LOJA IA
+
+Continuar mantendo separados:
+
+### Marketplace
+
+Produtos anunciados no Marketplace.
+
+### Loja IA
+
+Produtos da loja criada pelo usuário.
+
+Não importar automaticamente produtos do Marketplace para a Loja IA.
+
+Não importar automaticamente produtos fictícios de fornecedores para a Loja IA.
+
+Não misturar catálogos.
+
+---
+
+# PARTE 13 — TESTES OBRIGATÓRIOS
+
+Criar/atualizar testes para validar:
+
+### Fornecedores
+
+* catálogo fictício não aparece;
+* fornecedor não verificado não aparece como verificado;
+* fornecedor inexistente não é criado automaticamente;
+* produto sem fornecedor válido não é apresentado como produto de fornecedor;
+* preços fictícios não são gerados;
+* imagens Unsplash não são apresentadas como fotos verificadas de fornecedor.
+
+### Logo
+
+* usuário consegue enviar logo;
+* preview funciona;
+* logo fica persistida;
+* logo continua após logout/login;
+* logo continua após refresh;
+* logo continua após restart;
+* logo continua após deploy;
+* usuário consegue substituir;
+* usuário consegue remover;
+* loja A não consegue alterar logo da loja B;
+* Master Owner mantém as permissões administrativas existentes.
+
+### Integridade
+
+Testar também que:
+
+* Marketplace continua funcionando;
+* Loja IA continua funcionando;
+* autenticação continua funcionando;
+* pedidos continuam funcionando;
+* Mercado Pago continua funcionando;
+* entregas continuam funcionando;
+* escrow continua funcionando;
+* código de 4 dígitos continua funcionando;
+* carteira/comissões/repasse continuam funcionando;
+* planos continuam funcionando.
+
+---
+
+# PARTE 14 — REGRA CONTRA REGRESSÃO
+
+Antes de finalizar:
+
+1. analisar o código existente;
+2. reutilizar componentes existentes;
+3. não duplicar sistemas;
+4. não criar um segundo banco;
+5. não criar uma segunda autenticação;
+6. não substituir o armazenamento atual;
+7. não apagar funcionalidades existentes;
+8. não modificar a lógica financeira;
+9. não remover o Master Owner;
+10. não recriar o VEND+.
+
+Se alguma alteração puder afetar pagamentos, Mercado Pago, carteira, escrow ou repasses:
+
+**NÃO fazer essa alteração nesta tarefa.**
+
+---
+
+# PARTE 15 — LIMPEZA SEGURA
+
+Executar a limpeza dos dados fictícios somente depois de identificar os registros.
+
+Gerar um resumo antes/depois informando:
+
+* quantos fornecedores fictícios foram encontrados;
+* quantos produtos fictícios foram encontrados;
+* quantas imagens fictícias foram encontradas;
+* quantos registros foram removidos;
+* quantos registros reais foram preservados.
+
+**Não excluir dados reais de usuários.**
+
+---
+
+# RESULTADO FINAL ESPERADO
+
+O VEND+ deve terminar com:
+
+**1. Marketplace preservado.**
+
+**2. Loja IA preservada.**
+
+**3. Catálogo fictício de fornecedores removido.**
+
+**4. Nenhum fornecedor inventado automaticamente.**
+
+**5. Nenhum produto fictício apresentado como fornecedor homologado.**
+
+**6. Nenhuma imagem genérica apresentada como foto real de produto.**
+
+**7. Sistema preparado para fornecedores reais/verificados.**
+
+**8. Qualquer usuário pode personalizar a logo da própria Loja IA.**
+
+**9. Logo pode ser enviada do celular, computador, galeria, biblioteca/arquivos ou câmera.**
+
+**10. Logo fica salva permanentemente na loja.**
+
+**11. Cada loja possui sua própria logo e isolamento por `ownerId/storeId`.**
+
+**12. Nada disso pode remover ou quebrar o VEND+ que já está funcionando.**
+
+Ao terminar, executar:
+
+* lint;
+* typecheck, se existir;
+* testes;
+* build;
+* `git diff --check`.
+
+Corrigir erros encontrados.
+
+No final, apresentar:
+
+1. arquivos alterados;
+2. funcionalidades implementadas;
+3. dados fictícios removidos;
+4. testes executados;
+5. resultado do build;
+6. confirmação de que nenhum módulo financeiro existente foi alterado.

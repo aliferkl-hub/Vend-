@@ -134,7 +134,7 @@ export const CreateStoreAIView: React.FC<CreateStoreAIViewProps> = ({ onNavigate
   const [customTarget, setCustomTarget] = useState('');
   const [profitMarginPercent, setProfitMarginPercent] = useState<number>(35);
   const [visualStyle, setVisualStyle] = useState('modern');
-  const [productOrigin, setProductOrigin] = useState<'ECOSYSTEM' | 'CLIENT' | 'BOTH'>('BOTH');
+  const [productOrigin, setProductOrigin] = useState<'ECOSYSTEM' | 'CLIENT' | 'BOTH'>('CLIENT');
 
   // Products from verified catalog
   const [ecosystemCatalog, setEcosystemCatalog] = useState<EcosystemProductItem[]>([]);
@@ -155,41 +155,12 @@ export const CreateStoreAIView: React.FC<CreateStoreAIViewProps> = ({ onNavigate
   const [createdStoreData, setCreatedStoreData] = useState<any>(null);
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Load ecosystem catalog on mount
-  useEffect(() => {
-    async function loadCatalog() {
-      setLoadingCatalog(true);
-      try {
-        const res = await fetch('/api/stores/ecosystem-catalog');
-        if (res.ok) {
-          const data = await res.json();
-          setEcosystemCatalog(data.products || []);
-          // Auto-select items matching current niche
-          const matchIds = (data.products || [])
-            .filter((p: EcosystemProductItem) => p.niche.toLowerCase().includes(niche.toLowerCase().split(' ')[0]))
-            .slice(0, 4)
-            .map((p: EcosystemProductItem) => p.id);
-          setSelectedEcoProductIds(matchIds);
-        }
-      } catch (err) {
-        console.error('Error fetching ecosystem catalog:', err);
-      } finally {
-        setLoadingCatalog(false);
-      }
-    }
-    loadCatalog();
-  }, []);
+  // Supplier catalogs are intentionally empty until a real verified integration exists.
 
   // Update selected eco products when niche changes
   const handleNicheChange = (newNiche: string) => {
     setNiche(newNiche);
-    const matchIds = ecosystemCatalog
-      .filter((p) => p.niche.toLowerCase().includes(newNiche.toLowerCase().split(' ')[0]))
-      .slice(0, 4)
-      .map((p) => p.id);
-    if (matchIds.length > 0) {
-      setSelectedEcoProductIds(matchIds);
-    }
+    setSelectedEcoProductIds([]);
   };
 
   // Suggest store name with AI
@@ -312,7 +283,7 @@ export const CreateStoreAIView: React.FC<CreateStoreAIViewProps> = ({ onNavigate
       setGenerationStepText('Gerando slogan comercial, paleta de cores e banners promocionais...');
       await new Promise((r) => setTimeout(r, 700));
 
-      setGenerationStepText('Estruturando catálogo com imagens 100% fiéis e calculando margem de lucro...');
+      setGenerationStepText('Estruturando seu catálogo e calculando margem de lucro...');
 
       const response = await authFetch('/api/stores/generate-ai-store', {
         method: 'POST',
@@ -603,7 +574,7 @@ export const CreateStoreAIView: React.FC<CreateStoreAIViewProps> = ({ onNavigate
               <div>
                 <h2 className="text-xl font-bold text-slate-900">Passo 4: Produtos da sua Loja</h2>
                 <p className="text-slate-500 text-sm mt-1">
-                  Você pode vender produtos do <strong>Ecossistema VEND+</strong> (fornecedores verificados com fotos exatas), cadastrar <strong>seus próprios produtos</strong>, ou combinar os dois.
+                  Cadastre produtos próprios. Fornecedores verificados só aparecerão quando houver uma integração real com dados e evidências de verificação.
                 </p>
               </div>
 
@@ -617,7 +588,7 @@ export const CreateStoreAIView: React.FC<CreateStoreAIViewProps> = ({ onNavigate
                     productOrigin === 'BOTH' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  🌟 Ambos (Catálogo VEND+ + Próprios)
+                  🌟 Fornecedores verificados + próprios
                 </button>
                 <button
                   id="tab-origin-eco"
@@ -627,7 +598,7 @@ export const CreateStoreAIView: React.FC<CreateStoreAIViewProps> = ({ onNavigate
                     productOrigin === 'ECOSYSTEM' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  📦 Catálogo VEND+ (Fornecedores)
+                  📦 Fornecedores verificados
                 </button>
                 <button
                   id="tab-origin-client"
@@ -641,65 +612,10 @@ export const CreateStoreAIView: React.FC<CreateStoreAIViewProps> = ({ onNavigate
                 </button>
               </div>
 
-              {/* SECTION A: ECOSYSTEM PRODUCTS */}
               {(productOrigin === 'ECOSYSTEM' || productOrigin === 'BOTH') && (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-                      <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                      Produtos Verificados do Ecossistema VEND+ ({displayEcoProducts.length})
-                    </h3>
-                    <span className="text-xs text-slate-500">
-                      {selectedEcoProductIds.length} selecionado(s)
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500">
-                    Regra rigorosa do catálogo: cada imagem representa com 100% de exatidão o item anunciado. Os preços de custo são fornecidos diretamente pelos distribuidores parceiros.
-                  </p>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-80 overflow-y-auto pr-1">
-                    {displayEcoProducts.map((p) => {
-                      const isSelected = selectedEcoProductIds.includes(p.id);
-                      const costFormatted = (p.costPriceCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                      const retailCalc = (p.costPriceCents * (1 + profitMarginPercent / 100) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
-                      return (
-                        <div
-                          key={p.id}
-                          id={`eco-prod-${p.id}`}
-                          onClick={() => toggleEcoProduct(p.id)}
-                          className={`p-3 rounded-xl border-2 cursor-pointer transition flex items-center gap-3 ${
-                            isSelected ? 'border-sky-500 bg-sky-50/40' : 'border-slate-200 hover:border-slate-300 bg-white'
-                          }`}
-                        >
-                          <img
-                            src={p.imageUrl}
-                            alt={p.name}
-                            className="w-16 h-16 rounded-lg object-cover bg-slate-100 shrink-0"
-                            referrerPolicy="no-referrer"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <h4 className="text-xs font-bold text-slate-900 truncate">{p.name}</h4>
-                            <div className="flex items-center gap-2 mt-1 text-[11px]">
-                              <span className="text-slate-500">Custo: {costFormatted}</span>
-                              <span className="font-semibold text-emerald-700">Venda: {retailCalc}</span>
-                            </div>
-                            <span className="inline-block text-[10px] text-slate-400 mt-0.5 truncate max-w-full">
-                              Fornecedor: {p.supplierName}
-                            </span>
-                          </div>
-                          <div className="shrink-0">
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => {}}
-                              className="rounded text-sky-600 focus:ring-sky-500 w-4 h-4"
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-900">
+                  <strong>Nenhum fornecedor verificado disponível no momento.</strong>
+                  <p className="text-xs mt-1">Adicione produtos próprios ou conecte um fornecedor real quando a integração estiver disponível.</p>
                 </div>
               )}
 
@@ -756,7 +672,7 @@ export const CreateStoreAIView: React.FC<CreateStoreAIViewProps> = ({ onNavigate
                         type="url"
                         value={newProdImage}
                         onChange={(e) => setNewProdImage(e.target.value)}
-                        placeholder="https://images.unsplash.com/..."
+                        placeholder="https://... ou /uploads/arquivo.webp"
                         className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white"
                       />
                       <p className="text-[10px] text-slate-400 mt-1">

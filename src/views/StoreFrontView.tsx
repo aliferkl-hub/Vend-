@@ -389,7 +389,7 @@ export const StoreFrontView: React.FC<StoreFrontViewProps> = ({ storeSlug, onNav
           <h3 className="text-lg font-bold text-slate-900">Nossa História & Compromisso</h3>
           <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-line">
             {theme.aboutText ||
-              `A ${storeData.name} é uma loja oficial e parceira homologada do ecossistema VEND+. Nosso compromisso é entregar produtos de alta qualidade com procedência, suporte ágil e envio com garantia de ponta a ponta.`}
+              `A ${storeData.name} apresenta os produtos cadastrados pelo proprietário. Consulte a descrição de cada item e as condições de venda antes de comprar.`}
           </p>
 
           <div className="pt-2 border-t border-slate-100 flex items-center gap-4 text-xs text-slate-500">

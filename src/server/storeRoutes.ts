@@ -4,7 +4,6 @@ import { db } from '../db/index.ts';
 import { stores, products, services, users, categories, orders, orderItems } from '../db/schema.ts';
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { AuthRequest, requireAuth } from '../middleware/auth.ts';
-import { VERIFIED_ECOSYSTEM_PRODUCTS, EcosystemProduct } from './ecosystemCatalog.ts';
 import {
   generateStoreConceptAI,
   enhanceProductCopyAI,
@@ -13,41 +12,20 @@ import {
 } from './geminiService.ts';
 
 const router = Router();
+const PERSISTED_LOGO_PATTERN = /^\/uploads\/vend_[A-Za-z0-9_-]+\.(jpg|png|webp)$/i;
 
-// 1. GET ECOSYSTEM CATALOG (Verified Suppliers Products)
+function isPersistedLogoUrl(value: unknown): value is string | null {
+  return value === null || (typeof value === 'string' && PERSISTED_LOGO_PATTERN.test(value));
+}
+
+// 1. GET SUPPLIER CATALOG
 router.get('/ecosystem-catalog', async (req, res) => {
-  try {
-    const { nicho, categoria, q } = req.query;
-    let list = [...VERIFIED_ECOSYSTEM_PRODUCTS];
-
-    if (nicho) {
-      const n = String(nicho).toLowerCase();
-      list = list.filter((p) => p.niche.toLowerCase().includes(n));
-    }
-
-    if (categoria) {
-      const c = String(categoria).toLowerCase();
-      list = list.filter((p) => p.categorySlug.toLowerCase() === c);
-    }
-
-    if (q) {
-      const query = String(q).toLowerCase();
-      list = list.filter(
-        (p) =>
-          p.name.toLowerCase().includes(query) ||
-          p.description.toLowerCase().includes(query) ||
-          p.tags.some((t) => t.toLowerCase().includes(query))
-      );
-    }
-
-    return res.json({
-      total: list.length,
-      products: list,
+  return res.json({
+    total: 0,
+    products: [],
+    message: 'Nenhum fornecedor verificado disponível no momento.',
+    action: 'Adicionar fornecedor',
   });
-  } catch (err: any) {
-    console.error('Error fetching ecosystem catalog:', err);
-    return res.status(500).json({ error: 'Erro ao listar catálogo do ecossistema.' });
-  }
 });
 
 // 2. RUN COMMERCIAL AI TOOLS
@@ -78,7 +56,7 @@ router.post('/generate-ai-store', requireAuth, async (req: AuthRequest, res) => 
       profitMarginPercent = 35,
       location = user.location || 'São Paulo, SP',
       phone = user.phone || '(11) 99999-0000',
-      selectedProductOrigin = 'BOTH', // 'ECOSYSTEM' | 'CLIENT' | 'BOTH'
+      selectedProductOrigin = 'CLIENT', // Only user-owned products until a real supplier integration exists
       ecosystemProductIds = [],
       customProducts = [],
     } = req.body;
@@ -91,7 +69,7 @@ router.post('/generate-ai-store', requireAuth, async (req: AuthRequest, res) => 
     if (!Number.isFinite(margin) || margin < 0 || margin > 500) {
       return res.status(400).json({ error: 'A margem deve estar entre 0% e 500%.' });
     }
-    if (!validOrigins.has(selectedProductOrigin)) {
+    if (!validOrigins.has(selectedProductOrigin) || selectedProductOrigin === 'ECOSYSTEM') {
       return res.status(400).json({ error: 'Origem de produtos inválida.' });
     }
     if (!Array.isArray(customProducts) || customProducts.length > 50) {
@@ -190,54 +168,8 @@ router.post('/generate-ai-store', requireAuth, async (req: AuthRequest, res) => 
     const categoryMap = new Map(dbCategories.map((c) => [c.slug, c.id]));
     const defaultCategoryId = dbCategories[0]?.id || 1;
 
-    // Step G: Process Ecosystem Products (if selected)
-    const selectedEcosystemProducts = VERIFIED_ECOSYSTEM_PRODUCTS.filter(
-      (p) =>
-        (ecosystemProductIds && ecosystemProductIds.includes(p.id)) ||
-        (selectedProductOrigin === 'ECOSYSTEM' && (!ecosystemProductIds || ecosystemProductIds.length === 0) && p.niche.toLowerCase().includes(niche.toLowerCase().split(' ')[0]))
-    );
-
-    // If user chose ECOSYSTEM or BOTH and didn't pick specific ones, pick relevant niche products
-    const ecosystemToAdd =
-      selectedEcosystemProducts.length > 0
-        ? selectedEcosystemProducts
-        : selectedProductOrigin !== 'CLIENT'
-        ? VERIFIED_ECOSYSTEM_PRODUCTS.filter((p) => p.niche.toLowerCase().includes(niche.toLowerCase().split(' ')[0])).slice(0, 4)
-        : [];
-
-    for (const eco of ecosystemToAdd) {
-      const catId = categoryMap.get(eco.categorySlug) || defaultCategoryId;
-      const margin = Number(profitMarginPercent) || eco.defaultMarginPercent;
-      const finalPriceCents = Math.round(eco.costPriceCents * (1 + margin / 100));
-
-      const prodSlug = `${slug}-${eco.id}-${Math.random().toString(36).substring(2, 5)}`;
-
-      const [p] = await tx
-        .insert(products)
-        .values({
-          sellerId: user.id,
-          storeId: createdStore.id,
-          name: eco.name,
-          slug: prodSlug,
-          description: eco.description,
-          categoryId: catId,
-          condition: eco.condition,
-          priceCents: finalPriceCents,
-          originalPriceCents: eco.costPriceCents, // Stores real cost price for margin tracking
-          stock: eco.stock,
-          location: location.trim(),
-          offersDelivery: true,
-          offersPickup: true,
-          allowsNegotiation: false,
-          status: 'ACTIVE',
-          imageUrl: eco.imageUrl, // 100% rigorous exact image
-        })
-        .returning();
-
-      insertedProducts.push(p);
-    }
-
-    // Step H: Process Custom Client Products (if provided)
+    // Step G: Process user-owned products only. Supplier imports remain disabled
+    // until a real supplier integration and verification record exist.
     if (Array.isArray(customProducts) && customProducts.length > 0) {
       for (const custom of customProducts) {
         if (!custom.name || !custom.imageUrl) continue;
@@ -444,6 +376,35 @@ router.get('/:slug', async (req, res) => {
   }
 });
 
+// 6. UPDATE ONLY THE CURRENT STORE LOGO
+router.patch('/:id/logo', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const storeId = Number(req.params.id);
+    const user = req.user!;
+    const { logoUrl } = req.body;
+    const [store] = await db.select().from(stores).where(eq(stores.id, storeId)).limit(1);
+
+    if (!store) return res.status(404).json({ error: 'Loja não encontrada.' });
+    if (store.userId !== user.id && user.role !== 'MASTER_OWNER') {
+      return res.status(403).json({ error: 'Você não pode alterar a logo desta loja.' });
+    }
+    if (!isPersistedLogoUrl(logoUrl)) {
+      return res.status(400).json({ error: 'A logo deve ser uma imagem enviada ao storage persistente do VEND+.' });
+    }
+
+    const [updated] = await db
+      .update(stores)
+      .set({ logoUrl, updatedAt: new Date() })
+      .where(eq(stores.id, storeId))
+      .returning();
+
+    return res.json({ message: logoUrl ? 'Logo salva com sucesso.' : 'Logo removida com sucesso.', store: updated });
+  } catch (err) {
+    console.error('Update store logo error:', err);
+    return res.status(500).json({ error: 'Erro ao atualizar a logo da loja.' });
+  }
+});
+
 // 6. UPDATE STORE SETTINGS & THEME
 router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
   try {
@@ -475,7 +436,12 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
     };
 
     if (name) updates.name = name.trim();
-    if (logoUrl !== undefined) updates.logoUrl = logoUrl;
+    if (logoUrl !== undefined) {
+      if (!isPersistedLogoUrl(logoUrl)) {
+        return res.status(400).json({ error: 'A logo deve ser uma imagem enviada ao storage persistente do VEND+.' });
+      }
+      updates.logoUrl = logoUrl;
+    }
     if (bannerUrl !== undefined) updates.bannerUrl = bannerUrl;
     if (phone !== undefined) updates.phone = phone;
     if (hours !== undefined) updates.hours = hours;

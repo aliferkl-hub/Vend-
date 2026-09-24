@@ -18,8 +18,7 @@ interface ResponsiveProductImageProps {
   onClick?: () => void;
 }
 
-const DEFAULT_FALLBACK_IMAGE =
-  'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800&auto=format&fit=crop&q=80';
+const DEFAULT_FALLBACK_IMAGE = '/product-image-unavailable.svg';
 
 export const ResponsiveProductImage: React.FC<ResponsiveProductImageProps> = ({
   product,

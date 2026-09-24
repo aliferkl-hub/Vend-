@@ -1435,47 +1435,14 @@ export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNaviga
               rows={5}
               value={importJson}
               onChange={(e) => setImportJson(e.target.value)}
-              placeholder='Exemplo: [
-  { "name": "Bicicleta Caloi Aro 29", "priceCents": 120000, "condition": "USADO", "imageUrl": "https://...", "location": "São Paulo, SP" }
-]'
+              placeholder='Cole aqui um array JSON vindo de um fornecedor real com name, imageUrl persistida, categorySlug e priceCents.'
               className="w-full p-3 font-mono text-xs bg-slate-50 border border-slate-300 rounded-2xl focus:outline-none focus:border-sky-500"
             />
 
             <div className="flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => {
-                  setImportJson(
-                    JSON.stringify(
-                      [
-                        {
-                          name: 'Smart TV LG 50 Polegadas 4K',
-                          priceCents: 189900,
-                          condition: 'NOVO',
-                          imageUrl:
-                            'https://images.unsplash.com/photo-1593359677879-a4bb92f829d1?auto=format&fit=crop&w=800&q=80',
-                          location: 'São Paulo, SP',
-                          stock: 5,
-                        },
-                        {
-                          name: 'Monitor Gamer 27" 165Hz IPS',
-                          priceCents: 105000,
-                          condition: 'NOVO',
-                          imageUrl:
-                            'https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?auto=format&fit=crop&w=800&q=80',
-                          location: 'São Paulo, SP',
-                          stock: 3,
-                        },
-                      ],
-                      null,
-                      2
-                    )
-                  );
-                }}
-                className="text-xs font-bold text-sky-600 hover:underline"
-              >
-                Preencher exemplo de teste
-              </button>
+              <span className="text-[11px] text-slate-500">
+                Apenas dados reais fornecidos por fonte identificada devem ser importados.
+              </span>
 
               <button
                 id="admin-import-submit-btn"

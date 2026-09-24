@@ -25,6 +25,7 @@ import {
   MessageCircle,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
+import { uploadImageToStorage } from '../utils/imageOptimizer.ts';
 
 interface MyStoreViewProps {
   onNavigate: (view: string, data?: any) => void;
@@ -42,6 +43,9 @@ export const MyStoreView: React.FC<MyStoreViewProps> = ({ onNavigate }) => {
   const [showBulkMarginModal, setShowBulkMarginModal] = useState(false);
   const [bulkMarginValue, setBulkMarginValue] = useState('35');
   const [isApplyingBulkMargin, setIsApplyingBulkMargin] = useState(false);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [logoError, setLogoError] = useState('');
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
   // Add product modal
   const [showAddProductModal, setShowAddProductModal] = useState(false);
@@ -86,6 +90,52 @@ export const MyStoreView: React.FC<MyStoreViewProps> = ({ onNavigate }) => {
     navigator.clipboard.writeText(url);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2500);
+  };
+
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !storeData?.store) return;
+
+    setLogoPreview(URL.createObjectURL(file));
+    setIsUploadingLogo(true);
+    setLogoError('');
+    try {
+      const uploaded = await uploadImageToStorage(file, authFetch, { type: 'store-logo' });
+      const response = await authFetch(`/api/stores/${storeData.store.id}/logo`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ logoUrl: uploaded.url }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Não foi possível salvar a logo.');
+      await loadStore();
+      setLogoPreview(null);
+    } catch (err: any) {
+      setLogoError(err.message || 'Não foi possível enviar a logo.');
+    } finally {
+      setIsUploadingLogo(false);
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    if (!storeData?.store) return;
+    setIsUploadingLogo(true);
+    setLogoError('');
+    try {
+      const response = await authFetch(`/api/stores/${storeData.store.id}/logo`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ logoUrl: null }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Não foi possível remover a logo.');
+      await loadStore();
+    } catch (err: any) {
+      setLogoError(err.message || 'Não foi possível remover a logo.');
+    } finally {
+      setIsUploadingLogo(false);
+    }
   };
 
   // WhatsApp Share
@@ -399,7 +449,7 @@ export const MyStoreView: React.FC<MyStoreViewProps> = ({ onNavigate }) => {
                   className="px-3 py-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition"
                 >
                   <Package className="w-3.5 h-3.5" />
-                  Importar Fornecedor VEND+
+                  Adicionar fornecedor
                 </button>
 
                 <button
@@ -708,6 +758,45 @@ export const MyStoreView: React.FC<MyStoreViewProps> = ({ onNavigate }) => {
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+              <div className="sm:col-span-2 p-4 rounded-xl border border-slate-200 bg-slate-50">
+                <div className="flex items-center gap-4">
+                  <img
+                    src={logoPreview || store.logoUrl || `https://api.dicebear.com/7.x/identicon/svg?seed=${store.slug}`}
+                    alt={store.logoUrl ? `Logo da ${store.name}` : 'Logo padrão'}
+                    className="w-20 h-20 rounded-2xl object-cover bg-white border border-slate-200"
+                  />
+                  <div className="flex-1">
+                    <label className="block font-semibold text-slate-700 mb-1">Logo da loja</label>
+                    <p className="text-[11px] text-slate-500 mb-3">
+                      {store.logoUrl ? 'Logo personalizada salva no storage do VEND+.' : 'Logo padrão baseada no nome da loja.'}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <label className="px-3 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-bold cursor-pointer">
+                        {isUploadingLogo ? 'Enviando...' : store.logoUrl ? 'Alterar logo' : 'Adicionar logo'}
+                        <input
+                          id="input-store-logo"
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          className="hidden"
+                          disabled={isUploadingLogo}
+                          onChange={handleLogoUpload}
+                        />
+                      </label>
+                      {store.logoUrl && (
+                        <button
+                          type="button"
+                          disabled={isUploadingLogo}
+                          onClick={handleRemoveLogo}
+                          className="px-3 py-2 bg-white border border-rose-200 text-rose-700 hover:bg-rose-50 rounded-lg text-xs font-bold"
+                        >
+                          Remover logo
+                        </button>
+                      )}
+                    </div>
+                    {logoError && <p className="text-[11px] text-rose-600 mt-2">{logoError}</p>}
+                  </div>
+                </div>
+              </div>
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">Nome da Loja</label>
                 <input
@@ -837,7 +926,7 @@ export const MyStoreView: React.FC<MyStoreViewProps> = ({ onNavigate }) => {
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                   <Package className="w-4 h-4 text-indigo-600" />
-                  Catálogo Verificado de Fornecedores VEND+
+                  Fornecedores reais
                 </h3>
                 <button
                   type="button"
@@ -849,12 +938,16 @@ export const MyStoreView: React.FC<MyStoreViewProps> = ({ onNavigate }) => {
               </div>
 
               <p className="text-xs text-slate-500">
-                Selecione produtos verificados com fornecedores homologados pelo VEND+. Todas as fotos são 100% fiéis ao produto real anunciado.
+                Nenhum fornecedor verificado disponível no momento. O VEND+ não cria fornecedores, produtos, preços ou imagens fictícias.
               </p>
 
               <div className="flex-1 overflow-y-auto space-y-2 pr-1">
                 {loadingEco ? (
                   <div className="text-center py-8 text-xs text-slate-500">Carregando catálogo...</div>
+                ) : ecoCatalog.length === 0 ? (
+                  <div className="text-center py-8 text-xs text-slate-500">
+                    Nenhum fornecedor verificado disponível no momento.
+                  </div>
                 ) : (
                   ecoCatalog.map((item) => (
                     <div key={item.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs">
