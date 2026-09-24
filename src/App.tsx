@@ -26,6 +26,10 @@ import { ProfileView } from './views/ProfileView.tsx';
 import { CreateStoreAIView } from './views/CreateStoreAIView.tsx';
 import { MyStoreView } from './views/MyStoreView.tsx';
 import { StoreFrontView } from './views/StoreFrontView.tsx';
+import { MarketplaceLandingView } from './views/MarketplaceLandingView.tsx';
+import { LojaIaLandingView } from './views/LojaIaLandingView.tsx';
+import { ReferralsView } from './views/ReferralsView.tsx';
+import { marketingService } from './services/marketingService.ts';
 
 import { Product, ServiceItem, Category, Negotiation, DirectBuyIntent } from './types.ts';
 import nativeBridge from './services/nativeBridge.ts';
@@ -35,11 +39,15 @@ const MainApp: React.FC = () => {
   const { user, authFetch } = useAuth();
   const { totalItemsCount, addItem, clearCart } = useCart();
 
-  // Navigation State with Session Persistence
+  // Navigation State with Session Persistence & URL routing
   const [currentView, setCurrentView] = useState<string>(() => {
     try {
+      const pathname = window.location.pathname;
       const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('loja')) return 'store-front';
+      if (pathname === '/marketplace' || urlParams.get('view') === 'marketplace') return 'marketplace';
+      if (pathname === '/loja-ia' || urlParams.get('view') === 'loja-ia') return 'loja-ia';
+      if (pathname === '/indicacoes' || urlParams.get('view') === 'referrals' || urlParams.get('view') === 'indicacoes') return 'referrals';
+      if (pathname.startsWith('/loja/') || urlParams.get('loja')) return 'store-front';
       const payment = urlParams.get('payment') || urlParams.get('status') || urlParams.get('collection_status');
       if (payment === 'success' || payment === 'approved') return 'orders';
       const saved = sessionStorage.getItem('vend_current_view');
@@ -73,10 +81,32 @@ const MainApp: React.FC = () => {
     }
   });
 
-  // Check URL query parameters for direct store view (?loja=slug) and payment return
+  // Check URL query parameters, UTMs, direct views and payment return
   useEffect(() => {
     try {
+      marketingService.captureUrlParams();
+      marketingService.trackEvent({
+        eventType: 'page_view',
+        landingPath: window.location.pathname + window.location.search,
+      });
+
+      const pathname = window.location.pathname;
       const urlParams = new URLSearchParams(window.location.search);
+
+      if (pathname === '/marketplace' || urlParams.get('view') === 'marketplace') {
+        setCurrentView('marketplace');
+      } else if (pathname === '/loja-ia' || urlParams.get('view') === 'loja-ia') {
+        setCurrentView('loja-ia');
+      } else if (pathname === '/indicacoes' || urlParams.get('view') === 'referrals' || urlParams.get('view') === 'indicacoes') {
+        setCurrentView('referrals');
+      } else if (pathname.startsWith('/loja/')) {
+        const slug = pathname.replace('/loja/', '').split('/')[0];
+        if (slug) {
+          setStoreSlug(slug);
+          setCurrentView('store-front');
+        }
+      }
+
       const loja = urlParams.get('loja');
       if (loja) {
         setStoreSlug(loja);
@@ -434,6 +464,30 @@ const MainApp: React.FC = () => {
         {currentView === 'store-front' && (
           <StoreFrontView
             storeSlug={storeSlug}
+            onNavigate={(view, data) => {
+              handleNavigate(view, data);
+            }}
+          />
+        )}
+
+        {currentView === 'marketplace' && (
+          <MarketplaceLandingView
+            onNavigate={(view, data) => {
+              handleNavigate(view, data);
+            }}
+          />
+        )}
+
+        {currentView === 'loja-ia' && (
+          <LojaIaLandingView
+            onNavigate={(view, data) => {
+              handleNavigate(view, data);
+            }}
+          />
+        )}
+
+        {currentView === 'referrals' && (
+          <ReferralsView
             onNavigate={(view, data) => {
               handleNavigate(view, data);
             }}

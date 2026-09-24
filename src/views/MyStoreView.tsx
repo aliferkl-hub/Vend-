@@ -23,6 +23,9 @@ import {
   Clock,
   Send,
   MessageCircle,
+  Upload,
+  X,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
 import { uploadImageToStorage } from '../utils/imageOptimizer.ts';
@@ -49,6 +52,21 @@ export const MyStoreView: React.FC<MyStoreViewProps> = ({ onNavigate }) => {
 
   // Add product modal
   const [showAddProductModal, setShowAddProductModal] = useState(false);
+  const [newProductName, setNewProductName] = useState('');
+  const [newProductDesc, setNewProductDesc] = useState('');
+  const [newProductCost, setNewProductCost] = useState('');
+  const [newProductMargin, setNewProductMargin] = useState('35');
+  const [newProductPrice, setNewProductPrice] = useState('');
+  const [newProductStock, setNewProductStock] = useState('5');
+  const [newProductImage, setNewProductImage] = useState('');
+  const [newProductCategoryId, setNewProductCategoryId] = useState<number>(1);
+  const [newProductCondition, setNewProductCondition] = useState<'NOVO' | 'USADO'>('NOVO');
+  const [isSubmittingProduct, setIsSubmittingProduct] = useState(false);
+  const [productSubmitError, setProductSubmitError] = useState<string | null>(null);
+  const [productSubmitSuccess, setProductSubmitSuccess] = useState<string | null>(null);
+  const [availableCategories, setAvailableCategories] = useState<any[]>([]);
+  const [isUploadingProductImg, setIsUploadingProductImg] = useState(false);
+
   const [showImportEcoModal, setShowImportEcoModal] = useState(false);
   const [ecoCatalog, setEcoCatalog] = useState<any[]>([]);
   const [loadingEco, setLoadingEco] = useState(false);
@@ -81,7 +99,143 @@ export const MyStoreView: React.FC<MyStoreViewProps> = ({ onNavigate }) => {
 
   useEffect(() => {
     loadStore();
+
+    // Fetch categories for product creation
+    fetch('/api/categories')
+      .then((r) => r.json())
+      .then((cats) => {
+        if (Array.isArray(cats) && cats.length > 0) {
+          setAvailableCategories(cats);
+          setNewProductCategoryId(cats[0].id);
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  const handleCostOrMarginChange = (costVal: string, marginVal: string) => {
+    const costNum = parseFloat(costVal.replace(',', '.'));
+    const marginNum = parseFloat(marginVal.replace(',', '.'));
+    if (!isNaN(costNum) && costNum > 0) {
+      const margin = !isNaN(marginNum) ? marginNum : 35;
+      const calcPrice = (costNum * (1 + margin / 100)).toFixed(2);
+      setNewProductPrice(calcPrice);
+    }
+  };
+
+  const handleProductImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setProductSubmitError('Selecione um arquivo de imagem válido (JPG, PNG, WEBP).');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setProductSubmitError('A imagem deve ter no máximo 5MB.');
+      return;
+    }
+
+    try {
+      setIsUploadingProductImg(true);
+      setProductSubmitError(null);
+      const formData = new FormData();
+      formData.append('image', file);
+
+      const res = await authFetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Falha ao enviar imagem.');
+      }
+
+      setNewProductImage(data.url);
+    } catch (err: any) {
+      setProductSubmitError(err.message || 'Erro ao fazer upload da imagem.');
+    } finally {
+      setIsUploadingProductImg(false);
+    }
+  };
+
+  const handleCreateProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!storeData?.store?.id) {
+      setProductSubmitError('Loja não selecionada.');
+      return;
+    }
+
+    if (!newProductName.trim()) {
+      setProductSubmitError('Informe o nome do produto.');
+      return;
+    }
+
+    if (!newProductImage.trim()) {
+      setProductSubmitError('Adicione uma foto real do produto.');
+      return;
+    }
+
+    const rawPrice = newProductPrice.replace(',', '.');
+    const priceNum = parseFloat(rawPrice);
+    if (isNaN(priceNum) || priceNum <= 0) {
+      setProductSubmitError('Informe um preço de venda válido.');
+      return;
+    }
+
+    setIsSubmittingProduct(true);
+    setProductSubmitError(null);
+    setProductSubmitSuccess(null);
+
+    try {
+      const costRaw = newProductCost ? parseFloat(newProductCost.replace(',', '.')) : null;
+      const costCents = costRaw && !isNaN(costRaw) ? Math.round(costRaw * 100) : undefined;
+      const priceCents = Math.round(priceNum * 100);
+
+      const res = await authFetch(`/api/stores/${storeData.store.id}/products`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newProductName.trim(),
+          description: newProductDesc.trim() || `${newProductName.trim()} com garantia e pronta entrega.`,
+          priceCents,
+          costPriceCents: costCents,
+          marginPercent: Number(newProductMargin) || 35,
+          stock: Math.max(1, parseInt(newProductStock) || 1),
+          imageUrl: newProductImage.trim(),
+          categoryId: newProductCategoryId,
+          condition: newProductCondition,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Não foi possível publicar o produto. Tente novamente.');
+      }
+
+      setProductSubmitSuccess('Produto publicado com sucesso no catálogo da loja!');
+      setNewProductName('');
+      setNewProductDesc('');
+      setNewProductCost('');
+      setNewProductPrice('');
+      setNewProductImage('');
+      setNewProductStock('5');
+
+      // Refresh store products immediately
+      await loadStore();
+
+      setTimeout(() => {
+        setShowAddProductModal(false);
+        setProductSubmitSuccess(null);
+      }, 1000);
+    } catch (err: any) {
+      console.error('Publish product error:', err);
+      setProductSubmitError('Não foi possível publicar o produto. Tente novamente.');
+    } finally {
+      setIsSubmittingProduct(false);
+    }
+  };
 
   // Copy store link
   const handleCopyLink = () => {
@@ -454,7 +608,7 @@ export const MyStoreView: React.FC<MyStoreViewProps> = ({ onNavigate }) => {
 
                 <button
                   id="btn-add-product"
-                  onClick={() => onNavigate('sell')}
+                  onClick={() => setShowAddProductModal(true)}
                   className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-sm"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -466,8 +620,17 @@ export const MyStoreView: React.FC<MyStoreViewProps> = ({ onNavigate }) => {
             {/* Products Table/List */}
             <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
               {products.length === 0 ? (
-                <div className="text-center py-12 text-slate-500 text-sm">
-                  Nenhum produto cadastrado na sua loja ainda.
+                <div className="text-center py-12 px-4 text-slate-500 text-sm space-y-3">
+                  <Package className="w-10 h-10 text-slate-300 mx-auto" />
+                  <p className="font-semibold text-slate-700">Nenhum produto cadastrado na sua loja ainda.</p>
+                  <p className="text-xs text-slate-400">Cadastre seus produtos para que eles apareçam no catálogo público da sua loja virtual.</p>
+                  <button
+                    onClick={() => setShowAddProductModal(true)}
+                    className="mt-2 px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition shadow-sm"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Cadastrar Primeiro Produto
+                  </button>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -971,6 +1134,234 @@ export const MyStoreView: React.FC<MyStoreViewProps> = ({ onNavigate }) => {
                   ))
                 )}
               </div>
+            </div>
+          </div>
+        )}
+        {/* MODAL: ADD PRODUCT TO STORE */}
+        {showAddProductModal && (
+          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-white rounded-2xl p-6 max-w-lg w-full space-y-4 shadow-xl my-8">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <Package className="w-5 h-5 text-sky-600" />
+                  Publicar Produto na Loja
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddProductModal(false);
+                    setProductSubmitError(null);
+                  }}
+                  className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {productSubmitError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{productSubmitError}</span>
+                </div>
+              )}
+
+              {productSubmitSuccess && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-700 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>{productSubmitSuccess}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleCreateProduct} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Nome do Produto *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ex: Fone Bluetooth Pro Max"
+                    value={newProductName}
+                    onChange={(e) => setNewProductName(e.target.value)}
+                    className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Categoria *
+                    </label>
+                    <select
+                      value={newProductCategoryId}
+                      onChange={(e) => setNewProductCategoryId(Number(e.target.value))}
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-white"
+                    >
+                      {availableCategories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Condição
+                    </label>
+                    <select
+                      value={newProductCondition}
+                      onChange={(e) => setNewProductCondition(e.target.value as 'NOVO' | 'USADO')}
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-white"
+                    >
+                      <option value="NOVO">Novo (lacrado)</option>
+                      <option value="USADO">Usado (excelente estado)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                      Preço de Custo (R$)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="0,00"
+                      value={newProductCost}
+                      onChange={(e) => {
+                        setNewProductCost(e.target.value);
+                        handleCostOrMarginChange(e.target.value, newProductMargin);
+                      }}
+                      className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-sky-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                      Margem (%)
+                    </label>
+                    <input
+                      type="number"
+                      min="5"
+                      max="300"
+                      value={newProductMargin}
+                      onChange={(e) => {
+                        setNewProductMargin(e.target.value);
+                        handleCostOrMarginChange(newProductCost, e.target.value);
+                      }}
+                      className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-sky-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-900 mb-1">
+                      Preço Venda (R$) *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="0,00"
+                      value={newProductPrice}
+                      onChange={(e) => setNewProductPrice(e.target.value)}
+                      className="w-full px-2.5 py-1.5 text-xs font-bold text-slate-900 rounded-lg border border-slate-300 focus:ring-2 focus:ring-sky-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Estoque Disponível *
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={newProductStock}
+                    onChange={(e) => setNewProductStock(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-sky-500"
+                  />
+                </div>
+
+                {/* Photo Upload & Preview */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Foto do Produto *
+                  </label>
+                  <div className="space-y-2">
+                    {newProductImage && (
+                      <div className="relative w-24 h-24 rounded-xl border border-slate-200 overflow-hidden group">
+                        <img
+                          src={newProductImage}
+                          alt="Preview"
+                          className="w-full h-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setNewProductImage('')}
+                          className="absolute top-1 right-1 p-1 bg-red-600 text-white rounded-full opacity-90 hover:opacity-100"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <label className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition">
+                        <Upload className="w-3.5 h-3.5" />
+                        {isUploadingProductImg ? 'Enviando foto...' : 'Fazer Upload de Imagem'}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleProductImageUpload}
+                          disabled={isUploadingProductImg}
+                          className="hidden"
+                        />
+                      </label>
+                      <input
+                        type="url"
+                        placeholder="Ou cole a URL da imagem (https://...)"
+                        value={newProductImage}
+                        onChange={(e) => setNewProductImage(e.target.value)}
+                        className="flex-1 px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-sky-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Descrição do Produto
+                  </label>
+                  <textarea
+                    rows={3}
+                    placeholder="Detalhes, especificações, garantia e prazo de entrega..."
+                    value={newProductDesc}
+                    onChange={(e) => setNewProductDesc(e.target.value)}
+                    className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-sky-500"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddProductModal(false);
+                      setProductSubmitError(null);
+                    }}
+                    className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingProduct || isUploadingProductImg}
+                    className="px-5 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-xl shadow-sm transition disabled:opacity-50"
+                  >
+                    {isSubmittingProduct ? 'Publicando...' : 'Publicar Produto na Loja'}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

@@ -19,6 +19,8 @@ import { Product, DirectBuyIntent } from '../types.ts';
 import { useCart } from '../context/CartContext.tsx';
 import { useAuth } from '../context/AuthContext.tsx';
 import { NegotiationModal } from '../components/NegotiationModal.tsx';
+import { ShareBar } from '../components/ShareBar.tsx';
+import { marketingService } from '../services/marketingService.ts';
 
 interface ProductDetailViewProps {
   product: Product;
@@ -58,6 +60,24 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
   const [isNegModalOpen, setIsNegModalOpen] = useState(false);
   const [addedToast, setAddedToast] = useState(false);
   const [isFavorited, setIsFavorited] = useState(false);
+
+  React.useEffect(() => {
+    marketingService.trackEvent({
+      eventType: 'page_view',
+      landingPath: `/produto/${product.id}`,
+      productId: product.id,
+      storeId: product.storeId || undefined,
+    });
+    const originalTitle = document.title;
+    document.title = `${product.name} — VEND+`;
+    return () => {
+      document.title = originalTitle;
+    };
+  }, [product.id, product.name, product.storeId]);
+
+  const productShareUrl = React.useMemo(() => {
+    return marketingService.buildProductShareUrl(product.slug || product.id, 'whatsapp');
+  }, [product.id, product.slug]);
 
   const formattedPrice = (product.priceCents / 100).toLocaleString('pt-BR', {
     style: 'currency',
@@ -467,6 +487,14 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
               </div>
             )}
           </div>
+
+          {/* Social Sharing & QR Code */}
+          <ShareBar
+            title={product.name}
+            shareText={`Confira ${product.name} por ${formattedPrice} no VEND+:`}
+            url={productShareUrl}
+            type="PRODUCT"
+          />
 
           {/* Safety & Protocol Banner */}
           <div className="bg-[#0B192C] text-slate-200 rounded-2xl p-4 border border-slate-800 text-xs space-y-2">

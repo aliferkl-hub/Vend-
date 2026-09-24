@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
-import { db } from '../db/index.ts';
-import { stores, products, services, users, categories, orders, orderItems } from '../db/schema.ts';
+import { db, persistDatabase } from '../db/index.ts';
+import { stores, products, services, users, categories, orders, orderItems, productImages } from '../db/schema.ts';
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { AuthRequest, requireAuth } from '../middleware/auth.ts';
 import {
@@ -16,6 +16,17 @@ const PERSISTED_LOGO_PATTERN = /^\/uploads\/vend_[A-Za-z0-9_-]+\.(jpg|png|webp)$
 
 function isPersistedLogoUrl(value: unknown): value is string | null {
   return value === null || (typeof value === 'string' && PERSISTED_LOGO_PATTERN.test(value));
+}
+
+function isValidProductImageUrl(url: unknown): boolean {
+  if (typeof url !== 'string') return false;
+  const trimmed = url.trim();
+  return (
+    /^https?:\/\//i.test(trimmed) ||
+    trimmed.startsWith('/uploads/') ||
+    trimmed.startsWith('/assets/') ||
+    trimmed.startsWith('data:image/')
+  );
 }
 
 // 1. GET SUPPLIER CATALOG
@@ -78,13 +89,12 @@ router.post('/generate-ai-store', requireAuth, async (req: AuthRequest, res) => 
     for (const custom of customProducts) {
       if (
         !custom?.name?.trim() ||
-        !custom?.imageUrl?.trim() ||
-        !/^https?:\/\//i.test(custom.imageUrl) ||
+        !isValidProductImageUrl(custom?.imageUrl) ||
         !Number.isFinite(Number(custom.costPriceCents)) ||
         Number(custom.costPriceCents) <= 0 ||
         Number(custom.stock) < 0
       ) {
-        return res.status(400).json({ error: 'Cada produto personalizado precisa de nome, imagem HTTP, custo e estoque válidos.' });
+        return res.status(400).json({ error: 'Cada produto personalizado precisa de nome, imagem válida (HTTP ou upload), custo e estoque válidos.' });
       }
     }
 
@@ -203,10 +213,21 @@ router.post('/generate-ai-store', requireAuth, async (req: AuthRequest, res) => 
           })
           .returning();
 
+        // Also record image in productImages table
+        await tx.insert(productImages).values({
+          productId: p.id,
+          imageUrl: custom.imageUrl.trim(),
+          isPrimary: true,
+          displayOrder: 0,
+          type: 'main',
+        });
+
         insertedProducts.push(p);
       }
     }
     });
+
+    persistDatabase();
 
     return res.status(201).json({
       message: 'Loja virtual com IA criada com sucesso!',
@@ -267,9 +288,59 @@ router.get('/my/current', requireAuth, async (req: AuthRequest, res) => {
       .where(eq(products.storeId, store.id))
       .orderBy(desc(products.createdAt));
 
+    const productIds = storeProducts.map((sp) => sp.product.id);
+    const dbImages =
+      productIds.length > 0
+        ? await db
+            .select()
+            .from(productImages)
+            .where(inArray(productImages.productId, productIds))
+            .orderBy(productImages.displayOrder)
+        : [];
+
+    const imagesByProductId = new Map<number, any[]>();
+    for (const img of dbImages) {
+      if (!imagesByProductId.has(img.productId)) {
+        imagesByProductId.set(img.productId, []);
+      }
+      imagesByProductId.get(img.productId)!.push({
+        id: img.id,
+        url: img.imageUrl,
+        imageUrl: img.imageUrl,
+        isPrimary: img.isPrimary,
+        type: img.type,
+        position: img.displayOrder,
+      });
+    }
+
+    const formattedStoreProducts = storeProducts.map((sp) => {
+      const imgs = imagesByProductId.get(sp.product.id) || [
+        {
+          id: 0,
+          url: sp.product.imageUrl,
+          imageUrl: sp.product.imageUrl,
+          isPrimary: true,
+          type: 'main',
+          position: 0,
+        },
+      ];
+      return {
+        ...sp.product,
+        ownerId: sp.product.sellerId,
+        sellerId: sp.product.sellerId,
+        storeId: sp.product.storeId,
+        price: sp.product.priceCents / 100,
+        category: sp.category,
+        categorySlug: sp.category?.slug,
+        categoryName: sp.category?.name,
+        images: imgs,
+        productImages: imgs,
+      };
+    });
+
     // Calculate metrics
-    const totalProductsCount = storeProducts.length;
-    const activeProducts = storeProducts.filter((p) => p.product.status === 'ACTIVE');
+    const totalProductsCount = formattedStoreProducts.length;
+    const activeProducts = formattedStoreProducts.filter((p) => p.status === 'ACTIVE');
 
     // Fetch store sales orders
     const storeOrders = await db
@@ -293,10 +364,7 @@ router.get('/my/current', requireAuth, async (req: AuthRequest, res) => {
         themeConfig,
       },
       allStores: userStores,
-      products: storeProducts.map((sp) => ({
-        ...sp.product,
-        category: sp.category,
-      })),
+      products: formattedStoreProducts,
       metrics: {
         totalProductsCount,
         activeProductsCount: activeProducts.length,
@@ -312,7 +380,96 @@ router.get('/my/current', requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-// 5. GET STORE BY SLUG (Public Storefront)
+// 5. GET STORE PRODUCTS BY STORE ID OR SLUG (Public Catalog API)
+router.get('/:id/products', async (req, res) => {
+  try {
+    const rawId = req.params.id;
+    let storeRecord = null;
+    if (/^\d+$/.test(rawId)) {
+      const [s] = await db.select().from(stores).where(eq(stores.id, parseInt(rawId))).limit(1);
+      storeRecord = s;
+    } else {
+      const [s] = await db.select().from(stores).where(eq(stores.slug, rawId)).limit(1);
+      storeRecord = s;
+    }
+
+    if (!storeRecord) {
+      return res.status(404).json({ error: 'Loja não encontrada.' });
+    }
+
+    const storeProducts = await db
+      .select({
+        product: products,
+        category: categories,
+      })
+      .from(products)
+      .leftJoin(categories, eq(products.categoryId, categories.id))
+      .where(and(eq(products.storeId, storeRecord.id), eq(products.status, 'ACTIVE')))
+      .orderBy(desc(products.createdAt));
+
+    const productIds = storeProducts.map((sp) => sp.product.id);
+    const dbImages =
+      productIds.length > 0
+        ? await db
+            .select()
+            .from(productImages)
+            .where(inArray(productImages.productId, productIds))
+            .orderBy(productImages.displayOrder)
+        : [];
+
+    const imagesByProductId = new Map<number, any[]>();
+    for (const img of dbImages) {
+      if (!imagesByProductId.has(img.productId)) {
+        imagesByProductId.set(img.productId, []);
+      }
+      imagesByProductId.get(img.productId)!.push({
+        id: img.id,
+        url: img.imageUrl,
+        imageUrl: img.imageUrl,
+        isPrimary: img.isPrimary,
+        type: img.type,
+        position: img.displayOrder,
+      });
+    }
+
+    const formattedProducts = storeProducts.map((sp) => {
+      const imgs = imagesByProductId.get(sp.product.id) || [
+        {
+          id: 0,
+          url: sp.product.imageUrl,
+          imageUrl: sp.product.imageUrl,
+          isPrimary: true,
+          type: 'main',
+          position: 0,
+        },
+      ];
+      return {
+        ...sp.product,
+        ownerId: sp.product.sellerId,
+        sellerId: sp.product.sellerId,
+        storeId: sp.product.storeId,
+        price: sp.product.priceCents / 100,
+        category: sp.category,
+        categorySlug: sp.category?.slug,
+        categoryName: sp.category?.name,
+        images: imgs,
+        productImages: imgs,
+      };
+    });
+
+    return res.json({
+      storeId: storeRecord.id,
+      storeSlug: storeRecord.slug,
+      products: formattedProducts,
+      total: formattedProducts.length,
+    });
+  } catch (err) {
+    console.error('Get store products error:', err);
+    return res.status(500).json({ error: 'Erro ao carregar produtos da loja.' });
+  }
+});
+
+// 6. GET STORE BY SLUG (Public Storefront)
 router.get('/:slug', async (req, res) => {
   try {
     const { slug } = req.params;
@@ -349,7 +506,7 @@ router.get('/:slug', async (req, res) => {
       themeConfig = { bio: rawStore.description };
     }
 
-    // Fetch active products
+    // Fetch active products for this store
     const storeProducts = await db
       .select({
         product: products,
@@ -359,16 +516,63 @@ router.get('/:slug', async (req, res) => {
       .leftJoin(categories, eq(products.categoryId, categories.id))
       .where(and(eq(products.storeId, rawStore.id), eq(products.status, 'ACTIVE')))
       .orderBy(desc(products.createdAt))
-      .limit(60);
+      .limit(100);
+
+    const productIds = storeProducts.map((sp) => sp.product.id);
+    const dbImages =
+      productIds.length > 0
+        ? await db
+            .select()
+            .from(productImages)
+            .where(inArray(productImages.productId, productIds))
+            .orderBy(productImages.displayOrder)
+        : [];
+
+    const imagesByProductId = new Map<number, any[]>();
+    for (const img of dbImages) {
+      if (!imagesByProductId.has(img.productId)) {
+        imagesByProductId.set(img.productId, []);
+      }
+      imagesByProductId.get(img.productId)!.push({
+        id: img.id,
+        url: img.imageUrl,
+        imageUrl: img.imageUrl,
+        isPrimary: img.isPrimary,
+        type: img.type,
+        position: img.displayOrder,
+      });
+    }
+
+    const formattedProducts = storeProducts.map((sp) => {
+      const imgs = imagesByProductId.get(sp.product.id) || [
+        {
+          id: 0,
+          url: sp.product.imageUrl,
+          imageUrl: sp.product.imageUrl,
+          isPrimary: true,
+          type: 'main',
+          position: 0,
+        },
+      ];
+      return {
+        ...sp.product,
+        ownerId: sp.product.sellerId,
+        sellerId: sp.product.sellerId,
+        storeId: sp.product.storeId,
+        price: sp.product.priceCents / 100,
+        category: sp.category,
+        categorySlug: sp.category?.slug,
+        categoryName: sp.category?.name,
+        images: imgs,
+        productImages: imgs,
+      };
+    });
 
     return res.json({
       ...rawStore,
       themeConfig,
       owner: storeRecord.owner,
-      products: storeProducts.map((sp) => ({
-        ...sp.product,
-        category: sp.category,
-      })),
+      products: formattedProducts,
     });
   } catch (err) {
     console.error('Get store by slug error:', err);
@@ -397,6 +601,8 @@ router.patch('/:id/logo', requireAuth, async (req: AuthRequest, res) => {
       .set({ logoUrl, updatedAt: new Date() })
       .where(eq(stores.id, storeId))
       .returning();
+
+    persistDatabase();
 
     return res.json({ message: logoUrl ? 'Logo salva com sucesso.' : 'Logo removida com sucesso.', store: updated });
   } catch (err) {
@@ -462,6 +668,8 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
       .where(eq(stores.id, storeId))
       .returning();
 
+    persistDatabase();
+
     return res.json({
       message: 'Loja atualizada com sucesso!',
       store: updated,
@@ -481,7 +689,7 @@ router.post('/:id/products', requireAuth, async (req: AuthRequest, res) => {
     const [store] = await db.select().from(stores).where(eq(stores.id, storeId)).limit(1);
     if (!store) return res.status(404).json({ error: 'Loja não encontrada.' });
     if (store.userId !== user.id && user.role !== 'MASTER_OWNER') {
-      return res.status(403).json({ error: 'Acesso negado.' });
+      return res.status(403).json({ error: 'Acesso negado. Você não é proprietário desta loja.' });
     }
 
     const {
@@ -497,15 +705,19 @@ router.post('/:id/products', requireAuth, async (req: AuthRequest, res) => {
       ecosystemProductId,
     } = req.body;
 
-    if (!name || !imageUrl) {
+    if (!name?.trim() || !isValidProductImageUrl(imageUrl)) {
       return res.status(400).json({ error: 'Nome e imagem fiel do produto são obrigatórios.' });
     }
 
     const cost = Number(costPriceCents) || 0;
-    const finalPrice = priceCents ? Number(priceCents) : Math.round(cost * (1 + Number(marginPercent) / 100));
+    const computedPrice = priceCents ? Number(priceCents) : Math.round(cost * (1 + Number(marginPercent) / 100));
+    const finalPrice = Math.max(50, computedPrice || 100);
 
     const cleanName = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-');
     const slug = `${store.slug}-${cleanName}-${Date.now().toString(36)}`;
+
+    const resolvedCategoryId = categoryId ? parseInt(categoryId) : 1;
+    const [catRecord] = await db.select().from(categories).where(eq(categories.id, resolvedCategoryId)).limit(1);
 
     const [newProd] = await db
       .insert(products)
@@ -514,24 +726,56 @@ router.post('/:id/products', requireAuth, async (req: AuthRequest, res) => {
         sellerId: user.id,
         name: name.trim(),
         slug,
-        description: description ? description.trim() : `${name} com nota e garantia.`,
-        categoryId: categoryId || 1,
+        description: description ? description.trim() : `${name.trim()} com nota e garantia da ${store.name}.`,
+        categoryId: resolvedCategoryId,
         condition,
         priceCents: finalPrice,
         originalPriceCents: cost > 0 ? cost : null,
-        stock: Number(stock),
+        stock: Math.max(1, Number(stock) || 1),
         location: store.location,
-        offersDelivery: true,
-        offersPickup: true,
+        offersDelivery: Boolean(store.offersDelivery),
+        offersPickup: Boolean(store.offersPickup),
         allowsNegotiation: false,
         status: 'ACTIVE',
         imageUrl: imageUrl.trim(),
       })
       .returning();
 
+    // Insert image record in product_images
+    await db.insert(productImages).values({
+      productId: newProd.id,
+      imageUrl: imageUrl.trim(),
+      isPrimary: true,
+      displayOrder: 0,
+      type: 'main',
+    });
+
+    persistDatabase();
+
+    const savedImages = [
+      {
+        id: 0,
+        url: newProd.imageUrl,
+        imageUrl: newProd.imageUrl,
+        isPrimary: true,
+        type: 'main',
+        position: 0,
+      },
+    ];
+
     return res.status(201).json({
       message: 'Produto adicionado com sucesso à sua loja!',
-      product: newProd,
+      product: {
+        ...newProd,
+        ownerId: newProd.sellerId,
+        storeId: newProd.storeId,
+        price: newProd.priceCents / 100,
+        category: catRecord || null,
+        categorySlug: catRecord?.slug,
+        categoryName: catRecord?.name,
+        images: savedImages,
+        productImages: savedImages,
+      },
     });
   } catch (err: any) {
     console.error('Add product error:', err);
@@ -581,6 +825,8 @@ router.patch('/:id/products/:productId', requireAuth, async (req: AuthRequest, r
       .where(eq(products.id, productId))
       .returning();
 
+    persistDatabase();
+
     return res.json({
       message: 'Produto atualizado!',
       product: updated,
@@ -604,6 +850,8 @@ router.delete('/:id/products/:productId', requireAuth, async (req: AuthRequest, 
     }
 
     await db.delete(products).where(and(eq(products.id, productId), eq(products.storeId, storeId)));
+
+    persistDatabase();
 
     return res.json({ message: 'Produto removido da loja com sucesso.' });
   } catch (err) {
@@ -643,6 +891,8 @@ router.post('/:id/bulk-margin', requireAuth, async (req: AuthRequest, res) => {
         updatedCount++;
       }
     }
+
+    persistDatabase();
 
     return res.json({
       message: `Margem de ${margin}% aplicada com sucesso a ${updatedCount} produtos!`,

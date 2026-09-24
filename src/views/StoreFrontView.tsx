@@ -23,6 +23,8 @@ import {
 import { useCart } from '../context/CartContext.tsx';
 import { ResponsiveProductImage } from '../components/ResponsiveProductImage.tsx';
 import { DirectBuyIntent } from '../types.ts';
+import { ShareBar } from '../components/ShareBar.tsx';
+import { marketingService } from '../services/marketingService.ts';
 
 interface StoreFrontViewProps {
   storeSlug: string;
@@ -51,6 +53,12 @@ export const StoreFrontView: React.FC<StoreFrontViewProps> = ({ storeSlug, onNav
         }
         const data = await res.json();
         setStoreData(data);
+        marketingService.trackEvent({
+          eventType: 'page_view',
+          landingPath: `/loja/${storeSlug}`,
+          storeId: data.id,
+        });
+        document.title = `${data.name} — Loja Oficial VEND+`;
       } catch (err: any) {
         setError(err.message || 'Erro ao carregar loja.');
       } finally {
@@ -114,16 +122,34 @@ export const StoreFrontView: React.FC<StoreFrontViewProps> = ({ storeSlug, onNav
     accent: '#10B981',
   };
 
-  const products = storeData.products || [];
+  const isVerified = Boolean(
+    storeData?.isVerified === true ||
+    storeData?.verificationStatus === 'VERIFIED' ||
+    storeData?.themeConfig?.verificationStatus === 'VERIFIED'
+  );
+
+  const products: any[] = Array.isArray(storeData.products) ? storeData.products : [];
+
+  // Categories list
+  const categoryNames = Array.from(
+    new Set(
+      products
+        .map((p: any) => p.category?.name || p.categoryName)
+        .filter((name: any): name is string => typeof name === 'string' && name.trim().length > 0)
+    )
+  );
 
   // Filter products by category
   const filteredProducts =
     selectedCategory === 'ALL'
       ? products
-      : products.filter((p: any) => p.category?.name === selectedCategory || p.categorySlug === selectedCategory);
-
-  // Categories list
-  const categoryNames = Array.from(new Set(products.map((p: any) => p.category?.name).filter(Boolean)));
+      : products.filter(
+          (p: any) =>
+            p.category?.name === selectedCategory ||
+            p.categoryName === selectedCategory ||
+            p.categorySlug === selectedCategory ||
+            (p.category?.slug && p.category.slug === selectedCategory)
+        );
 
   return (
     <div id="store-front-view" className="min-h-screen bg-slate-50 pb-16">
@@ -138,7 +164,13 @@ export const StoreFrontView: React.FC<StoreFrontViewProps> = ({ storeSlug, onNav
             Voltar ao VEND+ Marketplace
           </button>
           <div className="flex items-center gap-3">
-            <span className="text-slate-400 hidden sm:inline">Loja Oficial Verificada VEND+</span>
+            {isVerified ? (
+              <span className="text-emerald-400 hidden sm:inline flex items-center gap-1 font-semibold">
+                <ShieldCheck className="w-3.5 h-3.5" /> Loja Oficial Verificada VEND+
+              </span>
+            ) : (
+              <span className="text-slate-400 hidden sm:inline">Loja Oficial VEND+</span>
+            )}
             <button
               onClick={handleCopyLink}
               className="text-sky-400 hover:text-sky-300 font-semibold flex items-center gap-1"
@@ -172,20 +204,26 @@ export const StoreFrontView: React.FC<StoreFrontViewProps> = ({ storeSlug, onNav
               Garantia e Pagamento Seguro VEND+
             </div>
             <h1 className="text-3xl sm:text-4xl font-black tracking-tight">{storeData.name}</h1>
-            <p className="text-slate-300 text-sm mt-1 max-w-2xl">
-              {theme.slogan || storeData.description || 'Os melhores produtos com garantia e pronta entrega.'}
-            </p>
+            {theme.slogan && (
+              <p className="text-slate-300 text-sm mt-1 max-w-2xl">
+                {theme.slogan}
+              </p>
+            )}
 
             {/* Badges / metadata */}
             <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 mt-4 text-xs text-slate-300">
-              <div className="flex items-center gap-1">
-                <MapPin className="w-3.5 h-3.5 text-sky-400" />
-                <span>{storeData.location}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <Clock className="w-3.5 h-3.5 text-sky-400" />
-                <span>{storeData.hours || 'Seg a Sex: 08:00 - 18:00'}</span>
-              </div>
+              {storeData.location && (
+                <div className="flex items-center gap-1">
+                  <MapPin className="w-3.5 h-3.5 text-sky-400" />
+                  <span>{storeData.location}</span>
+                </div>
+              )}
+              {storeData.hours && (
+                <div className="flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5 text-sky-400" />
+                  <span>{storeData.hours}</span>
+                </div>
+              )}
               {storeData.phone && (
                 <a
                   href={`https://wa.me/55${storeData.phone.replace(/[^0-9]/g, '')}`}
@@ -215,25 +253,45 @@ export const StoreFrontView: React.FC<StoreFrontViewProps> = ({ storeSlug, onNav
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-sm flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center shrink-0">
-              <Truck className="w-5 h-5" />
+          {(storeData.offersDelivery || storeData.offersPickup) && (
+            <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-sm flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center shrink-0">
+                <Truck className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-slate-900">
+                  {storeData.offersDelivery && storeData.offersPickup
+                    ? 'Entrega Local ou Retirada'
+                    : storeData.offersDelivery
+                    ? 'Entrega Disponível'
+                    : 'Retirada no Local'}
+                </div>
+                <div className="text-[11px] text-slate-500">
+                  {storeData.offersDelivery ? 'Consulte as opções de entrega' : 'Retirada combinada com o vendedor'}
+                </div>
+              </div>
             </div>
-            <div>
-              <div className="text-xs font-bold text-slate-900">Envio Expresso ou Retirada</div>
-              <div className="text-[11px] text-slate-500">Entrega rápida na sua região</div>
-            </div>
-          </div>
+          )}
 
           <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-sm flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
               <CreditCard className="w-5 h-5" />
             </div>
             <div>
-              <div className="text-xs font-bold text-slate-900">Pix ou Cartão em até 12x</div>
+              <div className="text-xs font-bold text-slate-900">Pix ou Cartão</div>
               <div className="text-[11px] text-slate-500">Checkout transparente Mercado Pago</div>
             </div>
           </div>
+        </div>
+
+        {/* Share Bar for Store */}
+        <div className="mt-4">
+          <ShareBar
+            title={storeData.name}
+            shareText={`Confira o catálogo oficial da loja ${storeData.name} no VEND+:`}
+            url={typeof window !== 'undefined' ? window.location.href : `https://vendmais.com/loja/${storeSlug}`}
+            type="STORE"
+          />
         </div>
       </div>
 
@@ -243,7 +301,8 @@ export const StoreFrontView: React.FC<StoreFrontViewProps> = ({ storeSlug, onNav
           <div>
             <h2 className="text-xl font-extrabold text-slate-900">Catálogo da Loja</h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              {filteredProducts.length} produto(s) disponível(is) com pronta entrega
+              {products.length} produto(s) disponível(is)
+              {selectedCategory !== 'ALL' && ` • Filtro: ${selectedCategory} (${filteredProducts.length})`}
             </p>
           </div>
 
@@ -258,7 +317,7 @@ export const StoreFrontView: React.FC<StoreFrontViewProps> = ({ storeSlug, onNav
                     : 'bg-white border border-slate-200 text-slate-600 hover:border-slate-300'
                 }`}
               >
-                Todos
+                Todos ({products.length})
               </button>
               {categoryNames.map((cat: any) => (
                 <button
@@ -278,9 +337,21 @@ export const StoreFrontView: React.FC<StoreFrontViewProps> = ({ storeSlug, onNav
         </div>
 
         {/* Product Cards Grid */}
-        {filteredProducts.length === 0 ? (
-          <div className="bg-white rounded-2xl p-12 text-center border border-slate-200 text-slate-500 text-sm">
-            Nenhum produto encontrado nesta categoria.
+        {products.length === 0 ? (
+          <div className="bg-white rounded-2xl p-12 text-center border border-slate-200 text-slate-500 text-sm space-y-2">
+            <ShoppingBag className="w-10 h-10 text-slate-300 mx-auto" />
+            <p className="font-bold text-slate-700">0 produto(s) disponível(is)</p>
+            <p className="text-xs text-slate-400">Nenhum produto cadastrado nesta loja no momento.</p>
+          </div>
+        ) : filteredProducts.length === 0 ? (
+          <div className="bg-white rounded-2xl p-12 text-center border border-slate-200 text-slate-500 text-sm space-y-3">
+            <p className="font-semibold text-slate-700">Nenhum produto encontrado nesta categoria.</p>
+            <button
+              onClick={() => setSelectedCategory('ALL')}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold"
+            >
+              Ver todos os produtos ({products.length})
+            </button>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -378,75 +449,73 @@ export const StoreFrontView: React.FC<StoreFrontViewProps> = ({ storeSlug, onNav
         )}
       </div>
 
-      {/* About & FAQ Section */}
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 mt-14 grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* About Card */}
-        <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-          <div className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-sky-600">
-            <Store className="w-4 h-4" />
-            Sobre a {storeData.name}
-          </div>
-          <h3 className="text-lg font-bold text-slate-900">Nossa História & Compromisso</h3>
-          <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-line">
-            {theme.aboutText ||
-              `A ${storeData.name} apresenta os produtos cadastrados pelo proprietário. Consulte a descrição de cada item e as condições de venda antes de comprar.`}
-          </p>
+      {/* About & Information Section */}
+      {(theme.aboutText || (Array.isArray(theme.faq) && theme.faq.length > 0) || storeData.description) && (
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 mt-14 grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* About Card */}
+          {(theme.aboutText || storeData.description) && (
+            <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+              <div className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-sky-600">
+                <Store className="w-4 h-4" />
+                Sobre a {storeData.name}
+              </div>
+              <h3 className="text-lg font-bold text-slate-900">Informações da Loja</h3>
+              <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-line">
+                {theme.aboutText || storeData.description}
+              </p>
 
-          <div className="pt-2 border-t border-slate-100 flex items-center gap-4 text-xs text-slate-500">
-            <div>
-              <strong>Localização:</strong> {storeData.location}
-            </div>
-            <div>
-              <strong>Horário:</strong> {storeData.hours}
-            </div>
-          </div>
-        </div>
-
-        {/* FAQ Accordion */}
-        <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-          <div className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-sky-600">
-            <HelpCircle className="w-4 h-4" />
-            Dúvidas Frequentes (FAQ)
-          </div>
-          <h3 className="text-lg font-bold text-slate-900">Perguntas Comuns</h3>
-
-          <div className="space-y-2">
-            {(theme.faq || [
-              {
-                question: 'Os produtos têm garantia?',
-                answer: 'Sim! Todos os produtos anunciados possuem garantia legal de 90 dias com suporte direto e respaldo do VEND+.',
-              },
-              {
-                question: 'Como funciona o envio e a entrega?',
-                answer: 'Entregamos via motoboy parceiro no mesmo dia para regiões próximas, envio nacional pelos Correios e retirada presencial.',
-              },
-              {
-                question: 'Quais formas de pagamento são aceitas?',
-                answer: 'Aceitamos Pix com aprovação imediata, cartão de crédito em até 12x via Mercado Pago e boleto bancário.',
-              },
-            ]).map((faqItem: any, idx: number) => {
-              const isOpen = openFaqIndex === idx;
-              return (
-                <div key={idx} className="border border-slate-200 rounded-xl overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => setOpenFaqIndex(isOpen ? null : idx)}
-                    className="w-full text-left p-3.5 flex items-center justify-between text-xs font-bold text-slate-900 bg-slate-50 hover:bg-slate-100 transition"
-                  >
-                    <span>{faqItem.question}</span>
-                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-                  </button>
-                  {isOpen && (
-                    <div className="p-3.5 text-xs text-slate-600 bg-white border-t border-slate-100 leading-relaxed">
-                      {faqItem.answer}
+              {(storeData.location || storeData.hours) && (
+                <div className="pt-2 border-t border-slate-100 flex items-center gap-4 text-xs text-slate-500">
+                  {storeData.location && (
+                    <div>
+                      <strong>Localização:</strong> {storeData.location}
+                    </div>
+                  )}
+                  {storeData.hours && (
+                    <div>
+                      <strong>Horário:</strong> {storeData.hours}
                     </div>
                   )}
                 </div>
-              );
-            })}
-          </div>
+              )}
+            </div>
+          )}
+
+          {/* FAQ Accordion */}
+          {Array.isArray(theme.faq) && theme.faq.length > 0 && (
+            <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+              <div className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-sky-600">
+                <HelpCircle className="w-4 h-4" />
+                Dúvidas Frequentes (FAQ)
+              </div>
+              <h3 className="text-lg font-bold text-slate-900">Perguntas Comuns</h3>
+
+              <div className="space-y-2">
+                {theme.faq.map((faqItem: any, idx: number) => {
+                  const isOpen = openFaqIndex === idx;
+                  return (
+                    <div key={idx} className="border border-slate-200 rounded-xl overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setOpenFaqIndex(isOpen ? null : idx)}
+                        className="w-full text-left p-3.5 flex items-center justify-between text-xs font-bold text-slate-900 bg-slate-50 hover:bg-slate-100 transition"
+                      >
+                        <span>{faqItem.question}</span>
+                        <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                      </button>
+                      {isOpen && (
+                        <div className="p-3.5 text-xs text-slate-600 bg-white border-t border-slate-100 leading-relaxed">
+                          {faqItem.answer}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
-      </div>
+      )}
 
       {/* Product Detail Modal */}
       {selectedProduct && (

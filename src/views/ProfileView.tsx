@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User as UserIcon, MapPin, Plus, Shield, Package, Trash2, LogOut } from 'lucide-react';
+import { User as UserIcon, MapPin, Plus, Shield, Package, Trash2, LogOut, Users, Gift } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
 import { Address } from '../types.ts';
 
@@ -109,6 +109,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onNavigate }) => {
           <MapPin className="w-5 h-5 text-purple-500 mb-2" />
           <h4 className="text-xs font-bold text-slate-900">Entregador</h4>
           <p className="text-[10px] text-slate-500">Validação 4 dígitos</p>
+        </button>
+
+        <button
+          onClick={() => onNavigate('referrals')}
+          className="bg-white p-4 rounded-2xl border border-slate-200 hover:border-sky-300 text-left transition-all shadow-2xs"
+        >
+          <Gift className="w-5 h-5 text-sky-500 mb-2" />
+          <h4 className="text-xs font-bold text-slate-900">Minhas Indicações</h4>
+          <p className="text-[10px] text-slate-500">Link exclusivo e convites</p>
         </button>
       </div>
 

@@ -24,6 +24,9 @@ import favoriteRoutes from './src/server/favoriteRoutes.ts';
 import notificationRoutes from './src/server/notificationRoutes.ts';
 import addressRoutes from './src/server/addressRoutes.ts';
 import payoutRoutes from './src/server/payoutRoutes.ts';
+import marketingRoutes from './src/server/marketingRoutes.ts';
+import { ensureMarketingTables } from './src/server/marketingMigration.ts';
+import { handleRobotsTxt, handleSitemapXml, handleSocialSharePreviews } from './src/server/seoRoutes.ts';
 import { initializeDatabaseSeed } from './src/server/seedData.ts';
 import { runAccountMigration } from './src/server/accountMigration.ts';
 
@@ -90,9 +93,18 @@ async function startServer() {
   app.use('/api/notifications', notificationRoutes);
   app.use('/api/addresses', addressRoutes);
   app.use('/api/payouts', payoutRoutes);
+  app.use('/api/marketing', marketingRoutes);
+
+  // SEO: Search engine robots and dynamic sitemap
+  app.get('/robots.txt', handleRobotsTxt);
+  app.get('/sitemap.xml', handleSitemapXml);
+
+  // SEO & Social previews for shared links (WhatsApp, Facebook, Twitter, iMessage)
+  app.use(handleSocialSharePreviews);
 
   // Initialize background database migration, seeds, and master owner
   try {
+    await ensureMarketingTables();
     await runAccountMigration();
     await initializeDatabaseSeed();
     const { sanitizeAndReconcileFinancialData } = await import('./src/server/financialService.ts');

@@ -26,6 +26,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
+import { MarketingDashboardTab } from './admin/MarketingDashboardTab.tsx';
 
 interface AdminViewProps {
   onRefreshCatalog: () => void;
@@ -34,7 +35,7 @@ interface AdminViewProps {
 
 export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNavigate }) => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'PLANS' | 'FINANCE_PIX' | 'STORES' | 'PRODUCTS' | 'ORDERS' | 'USERS' | 'IMPORT' | 'PAYOUTS_CONCILIATION'>('OVERVIEW');
+  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'MARKETING' | 'PLANS' | 'FINANCE_PIX' | 'STORES' | 'PRODUCTS' | 'ORDERS' | 'USERS' | 'IMPORT' | 'PAYOUTS_CONCILIATION'>('OVERVIEW');
 
   const [metrics, setMetrics] = useState<any>(null);
   const [financial, setFinancial] = useState<any[]>([]);
@@ -387,6 +388,19 @@ export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNaviga
         </button>
 
         <button
+          id="admin-tab-marketing"
+          onClick={() => setActiveTab('MARKETING')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${
+            activeTab === 'MARKETING'
+              ? 'bg-emerald-600 text-white shadow-xs'
+              : 'bg-white text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          <TrendingUp className="w-3.5 h-3.5" />
+          <span>Marketing VEND+</span>
+        </button>
+
+        <button
           onClick={() => setActiveTab('PLANS')}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${
             activeTab === 'PLANS'
@@ -703,6 +717,9 @@ export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNaviga
           </div>
         </div>
       )}
+
+      {/* TAB: MARKETING VEND+ */}
+      {activeTab === 'MARKETING' && <MarketingDashboardTab />}
 
       {/* TAB 2: PLANS & SUBSCRIPTIONS */}
       {activeTab === 'PLANS' && (

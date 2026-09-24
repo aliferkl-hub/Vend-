@@ -524,6 +524,60 @@ export const sellerBalances = pgTable('seller_balances', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+// 31. MARKETING_CAMPAIGNS (TRACKABLE CAMPAIGN MANAGEMENT)
+export const marketingCampaigns = pgTable('marketing_campaigns', {
+  id: serial('id').primaryKey(),
+  campaignId: text('campaign_id').notNull().unique(),
+  name: text('name').notNull(),
+  source: text('source').notNull(), // 'instagram' | 'tiktok' | 'facebook' | 'whatsapp' | 'youtube' | 'google' | 'user_referral' | 'paid_ads' | 'qr_code'
+  medium: text('medium'), // 'social' | 'share' | 'video' | 'cpc' | 'qr_code'
+  content: text('content'),
+  destination: text('destination').notNull().default('/'),
+  createdById: integer('created_by_id').references(() => users.id),
+  clicksCount: integer('clicks_count').default(0).notNull(),
+  conversionsCount: integer('conversions_count').default(0).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// 32. MARKETING_EVENTS (TRACKING VISITS, UTM ATTRIBUTION & CONVERSIONS)
+export const marketingEvents = pgTable('marketing_events', {
+  id: serial('id').primaryKey(),
+  sessionId: text('session_id').notNull(),
+  eventType: text('event_type').notNull().default('page_view'), // 'page_view' | 'signup' | 'login' | 'store_created' | 'product_created' | 'product_published' | 'checkout_started' | 'purchase_completed'
+  source: text('source'),
+  medium: text('medium'),
+  campaign: text('campaign'),
+  content: text('content'),
+  term: text('term'),
+  landingPath: text('landing_path'),
+  referrerUrl: text('referrer_url'),
+  userId: integer('user_id').references(() => users.id),
+  referralCode: text('referral_code'),
+  storeId: integer('store_id').references(() => stores.id),
+  productId: integer('product_id').references(() => products.id),
+  orderId: integer('order_id').references(() => orders.id),
+  metadata: text('metadata'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// 33. REFERRALS (USER INVITATIONS & CONVERSION FUNNEL)
+export const referrals = pgTable('referrals', {
+  id: serial('id').primaryKey(),
+  referrerId: integer('referrer_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  referralCode: text('referral_code').notNull(),
+  referredUserId: integer('referred_user_id').references(() => users.id, { onDelete: 'set null' }),
+  visitorSessionId: text('visitor_session_id'),
+  status: text('status').notNull().default('VISITED'), // 'VISITED' | 'REGISTERED' | 'STORE_CREATED' | 'PURCHASED'
+  storesCreatedCount: integer('stores_created_count').default(0).notNull(),
+  purchasesCount: integer('purchases_count').default(0).notNull(),
+  totalSpentCents: integer('total_spent_cents').default(0).notNull(),
+  firstActionAt: timestamp('first_action_at'),
+  firstPurchaseAt: timestamp('first_purchase_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
 // RELATIONS
 export const usersRelations = relations(users, ({ one, many }) => ({
   profile: one(profiles, { fields: [users.id], references: [profiles.userId] }),
@@ -535,6 +589,16 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   ordersAsSeller: many(orders, { relationName: 'sellerOrders' }),
   notifications: many(notifications),
   favorites: many(favorites),
+  referralsMade: many(referrals, { relationName: 'referrerUser' }),
+}));
+
+export const referralsRelations = relations(referrals, ({ one }) => ({
+  referrer: one(users, { fields: [referrals.referrerId], references: [users.id], relationName: 'referrerUser' }),
+  referredUser: one(users, { fields: [referrals.referredUserId], references: [users.id] }),
+}));
+
+export const marketingCampaignsRelations = relations(marketingCampaigns, ({ one }) => ({
+  creator: one(users, { fields: [marketingCampaigns.createdById], references: [users.id] }),
 }));
 
 export const productsRelations = relations(products, ({ one, many }) => ({

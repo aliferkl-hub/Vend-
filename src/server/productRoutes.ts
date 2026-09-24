@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { db, persistDatabase } from '../db/index.ts';
 import { products, categories, users, stores, productImages, plans, auditLogs } from '../db/schema.ts';
-import { eq, and, or, ilike, gte, lte, desc, sql, count } from 'drizzle-orm';
+import { eq, and, or, ilike, gte, lte, desc, sql, count, isNull } from 'drizzle-orm';
 import { AuthRequest, requireAuth } from '../middleware/auth.ts';
 
 const router = Router();
@@ -102,6 +102,8 @@ router.get('/', async (req, res) => {
       if (!isNaN(parsedStoreId)) {
         conditions.push(eq(products.storeId, parsedStoreId));
       }
+    } else if (req.query.includeStores !== 'true' && !req.query.sellerId) {
+      conditions.push(isNull(products.storeId));
     }
 
     // Category filter
@@ -352,11 +354,23 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
       .replace(/(^-|-$)/g, '');
     const slug = `${cleanSlugBase}-${Date.now().toString(36)}`;
 
+    // Validate store ownership if storeId is specified
+    let finalStoreId: number | null = null;
+    if (storeId) {
+      const parsedStoreId = parseInt(storeId);
+      if (!isNaN(parsedStoreId)) {
+        const [targetStore] = await db.select().from(stores).where(eq(stores.id, parsedStoreId)).limit(1);
+        if (targetStore && (targetStore.userId === seller.id || seller.role === 'MASTER_OWNER')) {
+          finalStoreId = targetStore.id;
+        }
+      }
+    }
+
     const [newProduct] = await db
       .insert(products)
       .values({
         sellerId: seller.id,
-        storeId: storeId ? parseInt(storeId) : null,
+        storeId: finalStoreId,
         name: name.trim(),
         slug,
         description: description.trim(),
