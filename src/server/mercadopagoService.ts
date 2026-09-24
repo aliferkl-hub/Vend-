@@ -1,6 +1,6 @@
 import { db } from '../db/index.ts';
 import { appSettings, payments, orders, subscriptions, users, notifications, auditLogs, plans, financialLedger, commissions } from '../db/schema.ts';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and } from 'drizzle-orm';
 import crypto from 'crypto';
 
 
@@ -760,230 +760,252 @@ export async function settlePayment(
   dbPayment: typeof payments.$inferSelect,
   mpData: any
 ): Promise<{ processed: boolean; status: string; alreadyProcessed?: boolean }> {
-  const mpStatus = mpData.status; // 'approved' | 'pending' | 'in_process' | 'rejected' | 'cancelled' | 'refunded'
-  const mpStatusDetail = mpData.status_detail || '';
-  const now = new Date();
+  const { withLock, recordLedgerEntry, syncSellerBalance } = await import('./financialService.ts');
 
-  // IDEMPOTENCY CHECK: If payment is already approved, do not double-process
-  if (dbPayment.status === 'APPROVED') {
+  return await withLock(`settle_payment_${dbPayment.id}`, async () => {
+    const mpStatus = mpData.status; // 'approved' | 'pending' | 'in_process' | 'rejected' | 'cancelled' | 'refunded'
+    const mpStatusDetail = mpData.status_detail || '';
+    const now = new Date();
+
+    // IDEMPOTENCY CHECK: If payment is already approved, do not double-process
+    if (dbPayment.status === 'APPROVED') {
+      return {
+        processed: true,
+        status: 'APPROVED',
+        alreadyProcessed: true,
+      };
+    }
+
+    let newDbStatus = dbPayment.status;
+    if (mpStatus === 'approved') {
+      newDbStatus = 'APPROVED';
+    } else if (mpStatus === 'rejected' || mpStatus === 'cancelled') {
+      newDbStatus = 'CANCELLED';
+    } else if (mpStatus === 'refunded') {
+      newDbStatus = 'REFUNDED';
+    }
+
+    // Update payment record in database
+    await db
+      .update(payments)
+      .set({
+        status: newDbStatus,
+        statusDetail: mpStatusDetail,
+        mpPaymentId: String(mpData.id),
+        mpStatus,
+        mpRawResponse: JSON.stringify(mpData),
+        paidAt: newDbStatus === 'APPROVED' ? now : dbPayment.paidAt,
+        dateApproved: mpData.date_approved ? new Date(mpData.date_approved) : (newDbStatus === 'APPROVED' ? now : null),
+        updatedAt: now,
+      })
+      .where(eq(payments.id, dbPayment.id));
+
+    // IF CANCELLED OR REFUNDED: Protect against fraudulent payouts
+    if ((newDbStatus === 'CANCELLED' || newDbStatus === 'REFUNDED') && dbPayment.orderId) {
+      console.log(`[MercadoPago] Pagamento #${dbPayment.id} ${newDbStatus}! Bloqueando repasse e cancelando pedido #${dbPayment.orderId}...`);
+      await db
+        .update(orders)
+        .set({
+          paymentStatus: newDbStatus,
+          payoutStatus: 'CANCELLED',
+          status: 'CANCELLED',
+          updatedAt: now,
+        })
+        .where(eq(orders.id, dbPayment.orderId));
+
+      await db
+        .update(financialLedger)
+        .set({
+          paymentStatus: newDbStatus,
+          orderStatus: 'CANCELLED',
+          payoutStatus: 'CANCELLED',
+          cancellationReason: mpStatusDetail || `Pagamento ${newDbStatus} no Mercado Pago`,
+          updatedAt: now,
+        })
+        .where(eq(financialLedger.orderId, dbPayment.orderId));
+
+      const [cancelledOrder] = await db.select().from(orders).where(eq(orders.id, dbPayment.orderId)).limit(1);
+      if (cancelledOrder) {
+        await syncSellerBalance(cancelledOrder.sellerId);
+      }
+    }
+
+    // IF APPROVED: Grant benefits / Update order or subscription
+    if (newDbStatus === 'APPROVED') {
+      console.log(`[MercadoPago] Pagamento #${dbPayment.id} APROVADO! Liquidando transação...`);
+
+      // 1. ORDER SETTLEMENT
+      if (dbPayment.orderId) {
+        const [order] = await db.select().from(orders).where(eq(orders.id, dbPayment.orderId)).limit(1);
+        if (order && (order.status === 'AWAITING_PAYMENT' || order.paymentStatus !== 'APPROVED')) {
+          await db
+            .update(orders)
+            .set({
+              status: 'PAID',
+              paymentStatus: 'APPROVED',
+              paidAt: now,
+              mpPaymentId: String(mpData.id),
+              payoutStatus: 'PENDING_DELIVERY_CONFIRMATION',
+              updatedAt: now,
+            })
+            .where(eq(orders.id, order.id));
+
+          await db
+            .update(commissions)
+            .set({
+              paidAt: now,
+              mpPaymentId: String(mpData.id),
+              payoutStatus: 'PENDING_DELIVERY_CONFIRMATION',
+            })
+            .where(eq(commissions.orderId, order.id));
+
+          // Check if ESCROW_HOLD already exists in financialLedger to prevent duplicate entry
+          const existingHold = await db
+            .select()
+            .from(financialLedger)
+            .where(
+              and(
+                eq(financialLedger.orderId, order.id),
+                eq(financialLedger.entryType, 'ESCROW_HOLD')
+              )
+            )
+            .limit(1);
+
+          if (existingHold.length === 0) {
+            await recordLedgerEntry({
+              orderId: order.id,
+              orderNumber: order.orderNumber,
+              sellerId: order.sellerId,
+              buyerId: order.buyerId,
+              entryType: 'ESCROW_HOLD',
+              grossAmountCents: order.totalGrossCents,
+              platformFeeCents: order.commissionCents,
+              sellerAmountCents: order.sellerNetCents,
+              paymentStatus: 'APPROVED',
+              orderStatus: 'PAID',
+              payoutStatus: 'PENDING_DELIVERY_CONFIRMATION',
+              status: 'HELD',
+              paymentId: dbPayment.id,
+              mpPaymentId: String(mpData.id),
+              referenceId: dbPayment.externalReference || String(dbPayment.id),
+              metadata: {
+                paymentId: dbPayment.id,
+                orderId: order.id,
+                externalReference: dbPayment.externalReference,
+                mpPaymentId: String(mpData.id),
+                mpStatus: mpData.status,
+                mpStatusDetail: mpData.status_detail,
+                amount: mpData.transaction_amount,
+              },
+            });
+          }
+
+          // Sync seller balances atomically: funds enter pendingBalanceCents, availableBalanceCents = 0
+          await syncSellerBalance(order.sellerId);
+
+          // Notifications
+          await db.insert(notifications).values({
+            userId: order.buyerId,
+            title: 'Pagamento confirmado!',
+            message: `Seu pagamento via Mercado Pago para o pedido #${order.orderNumber} foi confirmado com sucesso!`,
+            type: 'ORDER',
+            link: `/pedidos`,
+          });
+
+          // Audit Log
+          await db.insert(auditLogs).values({
+            userId: order.buyerId,
+            action: 'ORDER_PAYMENT_APPROVED_MP',
+            entityType: 'ORDER',
+            entityId: String(order.id),
+            details: JSON.stringify({
+              paymentId: dbPayment.id,
+              mpPaymentId: mpData.id,
+              amount: mpData.transaction_amount,
+              method: mpData.payment_method_id,
+            }),
+          });
+        }
+      }
+
+      // 2. SUBSCRIPTION SETTLEMENT
+      if (dbPayment.paymentType === 'SUBSCRIPTION' && dbPayment.userId) {
+        const targetUserId = dbPayment.userId;
+
+        // Find plan from price or metadata
+        let targetPlan: any = null;
+        if (mpData.metadata?.plan_slug) {
+          [targetPlan] = await db.select().from(plans).where(eq(plans.slug, mpData.metadata.plan_slug)).limit(1);
+        }
+        if (!targetPlan && mpData.metadata?.plan_id) {
+          [targetPlan] = await db.select().from(plans).where(eq(plans.id, Number(mpData.metadata.plan_id))).limit(1);
+        }
+        if (!targetPlan) {
+          const matchingPlans = await db.select().from(plans).where(eq(plans.priceCents, dbPayment.amountCents)).limit(1);
+          targetPlan = matchingPlans[0];
+        }
+
+        if (targetPlan) {
+          const startDate = now;
+          const endDate = new Date(now);
+          endDate.setDate(endDate.getDate() + 30);
+
+          // Insert subscription record
+          const [sub] = await db
+            .insert(subscriptions)
+            .values({
+              userId: targetUserId,
+              planId: targetPlan.id,
+              status: 'ACTIVE',
+              currentPeriodStart: startDate,
+              currentPeriodEnd: endDate,
+              autoRenew: true,
+            })
+            .returning();
+
+          // Update payment with subscriptionId
+          await db.update(payments).set({ subscriptionId: sub.id }).where(eq(payments.id, dbPayment.id));
+
+          // Activate plan in user profile
+          await db
+            .update(users)
+            .set({
+              planSlug: targetPlan.slug,
+              updatedAt: now,
+            })
+            .where(eq(users.id, targetUserId));
+
+          // Notification
+          await db.insert(notifications).values({
+            userId: targetUserId,
+            title: `Plano ${targetPlan.name} Ativado!`,
+            message: `Seu pagamento foi confirmado pelo Mercado Pago e o plano ${targetPlan.name} já está ativo na sua conta. Aproveite todas as vantagens!`,
+            type: 'SYSTEM',
+            link: `/planos`,
+          });
+
+          // Audit Log
+          await db.insert(auditLogs).values({
+            userId: targetUserId,
+            action: 'PLAN_SUBSCRIPTION_ACTIVATED_MP',
+            entityType: 'PLAN',
+            entityId: String(targetPlan.id),
+            details: JSON.stringify({
+              paymentId: dbPayment.id,
+              mpPaymentId: mpData.id,
+              planName: targetPlan.name,
+              amount: mpData.transaction_amount,
+            }),
+          });
+
+          console.log(`[MercadoPago] Plano ${targetPlan.name} ativado com sucesso para usuário #${targetUserId}.`);
+        }
+      }
+    }
+
     return {
       processed: true,
-      status: 'APPROVED',
-      alreadyProcessed: true,
-    };
-  }
-
-  let newDbStatus = dbPayment.status;
-  if (mpStatus === 'approved') {
-    newDbStatus = 'APPROVED';
-  } else if (mpStatus === 'rejected' || mpStatus === 'cancelled') {
-    newDbStatus = 'CANCELLED';
-  } else if (mpStatus === 'refunded') {
-    newDbStatus = 'REFUNDED';
-  }
-
-  // Update payment record in database
-  await db
-    .update(payments)
-    .set({
       status: newDbStatus,
-      statusDetail: mpStatusDetail,
-      mpPaymentId: String(mpData.id),
-      mpStatus,
-      mpRawResponse: JSON.stringify(mpData),
-      paidAt: newDbStatus === 'APPROVED' ? now : dbPayment.paidAt,
-      dateApproved: mpData.date_approved ? new Date(mpData.date_approved) : (newDbStatus === 'APPROVED' ? now : null),
-      updatedAt: now,
-    })
-    .where(eq(payments.id, dbPayment.id));
-
-  // IF CANCELLED OR REFUNDED: Protect against fraudulent payouts
-  if ((newDbStatus === 'CANCELLED' || newDbStatus === 'REFUNDED') && dbPayment.orderId) {
-    console.log(`[MercadoPago] Pagamento #${dbPayment.id} ${newDbStatus}! Bloqueando repasse e cancelando pedido #${dbPayment.orderId}...`);
-    await db
-      .update(orders)
-      .set({
-        paymentStatus: newDbStatus,
-        payoutStatus: 'CANCELLED',
-        status: 'CANCELLED',
-        updatedAt: now,
-      })
-      .where(eq(orders.id, dbPayment.orderId));
-
-    await db
-      .update(financialLedger)
-      .set({
-        paymentStatus: newDbStatus,
-        orderStatus: 'CANCELLED',
-        payoutStatus: 'CANCELLED',
-        cancellationReason: mpStatusDetail || `Pagamento ${newDbStatus} no Mercado Pago`,
-        updatedAt: now,
-      })
-      .where(eq(financialLedger.orderId, dbPayment.orderId));
-  }
-
-  // IF APPROVED: Grant benefits / Update order or subscription
-  if (newDbStatus === 'APPROVED') {
-    console.log(`[MercadoPago] Pagamento #${dbPayment.id} APROVADO! Liquidando transação...`);
-
-    // 1. ORDER SETTLEMENT
-    if (dbPayment.orderId) {
-      const [order] = await db.select().from(orders).where(eq(orders.id, dbPayment.orderId)).limit(1);
-      if (order && order.status === 'AWAITING_PAYMENT') {
-        await db
-          .update(orders)
-          .set({
-            status: 'PAID',
-            paymentStatus: 'APPROVED',
-            paidAt: now,
-            mpPaymentId: String(mpData.id),
-            payoutStatus: 'PENDING_DELIVERY_CONFIRMATION',
-            updatedAt: now,
-          })
-          .where(eq(orders.id, order.id));
-
-        await db
-          .update(commissions)
-          .set({
-            paidAt: now,
-            mpPaymentId: String(mpData.id),
-            payoutStatus: 'PENDING_DELIVERY_CONFIRMATION',
-          })
-          .where(eq(commissions.orderId, order.id));
-
-        // Insert or update financial ledger entry for complete reconciliation
-        const { recordLedgerEntry, syncSellerBalance } = await import('./financialService.ts');
-        await recordLedgerEntry({
-          orderId: order.id,
-          orderNumber: order.orderNumber,
-          sellerId: order.sellerId,
-          buyerId: order.buyerId,
-          entryType: 'ESCROW_HOLD',
-          grossAmountCents: order.totalGrossCents,
-          platformFeeCents: order.commissionCents,
-          sellerAmountCents: order.sellerNetCents,
-          paymentStatus: 'APPROVED',
-          orderStatus: 'PAID',
-          payoutStatus: 'PENDING_DELIVERY_CONFIRMATION',
-          status: 'HELD',
-          paymentId: dbPayment.id,
-          mpPaymentId: String(mpData.id),
-          referenceId: String(dbPayment.id),
-        });
-
-        // Sync seller balances atomically
-        await syncSellerBalance(order.sellerId);
-
-        // Notifications
-        await db.insert(notifications).values({
-          userId: order.buyerId,
-          title: 'Pagamento confirmado!',
-          message: `Seu pagamento via Mercado Pago para o pedido #${order.orderNumber} foi confirmado com sucesso!`,
-          type: 'ORDER',
-          link: `/pedidos`,
-        });
-
-        await db.insert(notifications).values({
-          userId: order.sellerId,
-          title: 'Pagamento recebido no Mercado Pago!',
-          message: `O pedido #${order.orderNumber} teve o pagamento aprovado. Prepare o produto para entrega.`,
-          type: 'SALE',
-          link: `/pedidos`,
-        });
-
-        // Audit Log
-        await db.insert(auditLogs).values({
-          userId: order.buyerId,
-          action: 'ORDER_PAYMENT_APPROVED_MP',
-          entityType: 'ORDER',
-          entityId: String(order.id),
-          details: JSON.stringify({
-            paymentId: dbPayment.id,
-            mpPaymentId: mpData.id,
-            amount: mpData.transaction_amount,
-            method: mpData.payment_method_id,
-          }),
-        });
-      }
-    }
-
-    // 2. PLAN / SUBSCRIPTION SETTLEMENT
-    if (dbPayment.paymentType === 'SUBSCRIPTION' && dbPayment.userId) {
-      const targetUserId = dbPayment.userId;
-
-      // Find plan from price or metadata
-      let targetPlan: any = null;
-      if (mpData.metadata?.plan_slug) {
-        [targetPlan] = await db.select().from(plans).where(eq(plans.slug, mpData.metadata.plan_slug)).limit(1);
-      }
-      if (!targetPlan && mpData.metadata?.plan_id) {
-        [targetPlan] = await db.select().from(plans).where(eq(plans.id, Number(mpData.metadata.plan_id))).limit(1);
-      }
-      if (!targetPlan) {
-        const matchingPlans = await db.select().from(plans).where(eq(plans.priceCents, dbPayment.amountCents)).limit(1);
-        targetPlan = matchingPlans[0];
-      }
-
-      if (targetPlan) {
-        const startDate = now;
-        const endDate = new Date(now);
-        endDate.setDate(endDate.getDate() + 30);
-
-        // Insert subscription record
-        const [sub] = await db
-          .insert(subscriptions)
-          .values({
-            userId: targetUserId,
-            planId: targetPlan.id,
-            status: 'ACTIVE',
-            currentPeriodStart: startDate,
-            currentPeriodEnd: endDate,
-            autoRenew: true,
-          })
-          .returning();
-
-        // Update payment with subscriptionId
-        await db.update(payments).set({ subscriptionId: sub.id }).where(eq(payments.id, dbPayment.id));
-
-        // Activate plan in user profile
-        await db
-          .update(users)
-          .set({
-            planSlug: targetPlan.slug,
-            updatedAt: now,
-          })
-          .where(eq(users.id, targetUserId));
-
-        // Notification
-        await db.insert(notifications).values({
-          userId: targetUserId,
-          title: `Plano ${targetPlan.name} Ativado!`,
-          message: `Seu pagamento foi confirmado pelo Mercado Pago e o plano ${targetPlan.name} já está ativo na sua conta. Aproveite todas as vantagens!`,
-          type: 'SYSTEM',
-          link: `/planos`,
-        });
-
-        // Audit Log
-        await db.insert(auditLogs).values({
-          userId: targetUserId,
-          action: 'PLAN_SUBSCRIPTION_ACTIVATED_MP',
-          entityType: 'PLAN',
-          entityId: String(targetPlan.id),
-          details: JSON.stringify({
-            paymentId: dbPayment.id,
-            mpPaymentId: mpData.id,
-            planName: targetPlan.name,
-            amount: mpData.transaction_amount,
-          }),
-        });
-
-        console.log(`[MercadoPago] Plano ${targetPlan.name} ativado com sucesso para usuário #${targetUserId}.`);
-      }
-    }
-  }
-
-  return {
-    processed: true,
-    status: newDbStatus,
-  };
+    };
+  });
 }

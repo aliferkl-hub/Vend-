@@ -95,6 +95,8 @@ async function startServer() {
   try {
     await runAccountMigration();
     await initializeDatabaseSeed();
+    const { sanitizeAndReconcileFinancialData } = await import('./src/server/financialService.ts');
+    await sanitizeAndReconcileFinancialData();
   } catch (err: any) {
     console.error('Database initialization note:', err.message);
   }

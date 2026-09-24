@@ -440,6 +440,13 @@ router.patch('/:id/status', requireAuth, async (req: AuthRequest, res) => {
       return res.status(400).json({ error: 'Transição de status não permitida.' });
     }
 
+    // Cannot prepare or ship unpaid orders (Regras Obrigatórias 1, 2 e 5)
+    if (status !== 'CANCELLED' && order.paymentStatus !== 'APPROVED') {
+      return res.status(400).json({
+        error: 'Este pedido ainda não teve o pagamento confirmado pelo Mercado Pago. Não é permitido alterar o status para preparo ou envio antes da aprovação do pagamento.',
+      });
+    }
+
     // If order was already delivered, cannot cancel
     if (order.status === 'DELIVERED') {
       return res.status(400).json({ error: 'Pedidos já entregues e confirmados com código não podem ser cancelados diretamente.' });

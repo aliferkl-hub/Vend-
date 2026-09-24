@@ -169,13 +169,14 @@ router.get('/wallet', requireAuth, async (req: AuthRequest, res: Response) => {
       .where(eq(sellerPayoutAccounts.sellerId, user.id))
       .limit(1);
 
-    // 3. Fetch payout requests
+    // 3. Fetch payout requests with linked order details (Regra Obrigatória 12)
     const requests = await db
       .select()
       .from(payoutRequests)
       .where(eq(payoutRequests.sellerId, user.id))
       .orderBy(desc(payoutRequests.requestedAt));
 
+    const enrichedRequests = [];
     let pendingPayoutsCount = 0;
     let completedPayoutsCount = 0;
 
@@ -185,6 +186,29 @@ router.get('/wallet', requireAuth, async (req: AuthRequest, res: Response) => {
       } else if (r.status === 'REQUESTED' || r.status === 'PROCESSING') {
         pendingPayoutsCount++;
       }
+
+      let linkedOrders: Array<{ orderId: number; orderNumber: string; mpPaymentId: string | null; amountCents: number }> = [];
+      try {
+        if (r.orderIds) {
+          const ids: number[] = JSON.parse(r.orderIds);
+          if (Array.isArray(ids) && ids.length > 0) {
+            const ords = await db.select().from(orders).where(inArray(orders.id, ids));
+            linkedOrders = ords.map((o) => ({
+              orderId: o.id,
+              orderNumber: o.orderNumber,
+              mpPaymentId: o.mpPaymentId,
+              amountCents: o.sellerNetCents,
+            }));
+          }
+        }
+      } catch {
+        linkedOrders = [];
+      }
+
+      enrichedRequests.push({
+        ...r,
+        linkedOrders,
+      });
     }
 
     // 4. Fetch recent financial transactions
@@ -204,7 +228,7 @@ router.get('/wallet', requireAuth, async (req: AuthRequest, res: Response) => {
       pendingPayoutsCount,
       completedPayoutsCount,
       payoutAccount: payoutAccount || null,
-      payoutRequests: requests,
+      payoutRequests: enrichedRequests,
       recentTransactions: ledgerEntries,
     });
   } catch (err: any) {
@@ -235,7 +259,7 @@ router.post('/request', requireAuth, async (req: AuthRequest, res: Response) => 
         });
       }
 
-      // 2. Find eligible delivered orders with available payout
+      // 2. Find eligible delivered orders with available payout (Regras Obrigatórias 8, 9, 11 e 12)
       const eligibleOrders = await db
         .select()
         .from(orders)
@@ -243,13 +267,15 @@ router.post('/request', requireAuth, async (req: AuthRequest, res: Response) => 
           and(
             eq(orders.sellerId, user.id),
             eq(orders.status, 'DELIVERED'),
+            eq(orders.deliveryCodeUsed, true),
+            eq(orders.paymentStatus, 'APPROVED'),
             sql`${orders.payoutStatus} IN ('RELEASED', 'AVAILABLE_FOR_PAYOUT')`
           )
         );
 
       if (eligibleOrders.length === 0) {
         return res.status(400).json({
-          error: 'Nenhum valor disponível para repasse no momento. O saldo só fica disponível após o comprador confirmar a entrega com o código de 4 dígitos.',
+          error: 'Nenhum valor disponível para repasse no momento. O saldo só fica disponível após o comprador confirmar a entrega com o código de 4 dígitos para pedidos com pagamento aprovado.',
         });
       }
 

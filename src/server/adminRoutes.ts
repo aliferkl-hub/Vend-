@@ -602,7 +602,7 @@ router.post('/payments/mercadopago/test-connection', requireMasterOwner, async (
   }
 });
 
-// 15. EXECUTE 18 MANDATORY FINANCIAL AUDIT TESTS
+// 15. EXECUTE 28 MANDATORY FINANCIAL AUDIT TESTS
 router.get('/financial-tests', requireMasterOwner, async (_req: AuthRequest, res) => {
   try {
     const { runAllFinancialTests } = await import('../../tests/financialAudit.test.ts');
@@ -611,6 +611,35 @@ router.get('/financial-tests', requireMasterOwner, async (_req: AuthRequest, res
   } catch (err: any) {
     console.error('Error running financial tests:', err);
     return res.status(500).json({ error: 'Erro ao executar bateria de testes financeiros.', details: err.message });
+  }
+});
+
+// 16. RUN AUTOMATED FINANCIAL RECONCILIATION & AUDIT ENGINE (Regra Obrigatória 15)
+router.get('/financial-reconciliation', requireMasterOwner, async (_req: AuthRequest, res) => {
+  try {
+    const { runFinancialReconciliation } = await import('./financialService.ts');
+    const auditReport = await runFinancialReconciliation();
+    return res.json(auditReport);
+  } catch (err: any) {
+    console.error('Error running financial reconciliation:', err);
+    return res.status(500).json({ error: 'Erro ao executar conciliação financeira.', details: err.message });
+  }
+});
+
+// 17. EXECUTE AUTOMATIC FINANCIAL DATA SANITIZATION & FIX (Regra Obrigatória 10)
+router.post('/financial-reconciliation/sanitize', requireMasterOwner, async (_req: AuthRequest, res) => {
+  try {
+    const { sanitizeAndReconcileFinancialData, runFinancialReconciliation } = await import('./financialService.ts');
+    await sanitizeAndReconcileFinancialData();
+    const freshReport = await runFinancialReconciliation();
+    return res.json({
+      success: true,
+      message: 'Sanitização e reconciliação financeira executadas com sucesso.',
+      freshReport,
+    });
+  } catch (err: any) {
+    console.error('Error running financial sanitization:', err);
+    return res.status(500).json({ error: 'Erro ao executar sanitização de dados financeiros.', details: err.message });
   }
 });
 

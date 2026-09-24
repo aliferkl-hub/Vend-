@@ -123,9 +123,13 @@ export const SellerDashboardView: React.FC<SellerDashboardViewProps> = ({
     fetchSellerData();
   }, []);
 
-  const totalGrossCents = sales.reduce((sum, s) => sum + s.totalGrossCents, 0);
-  const totalCommissionCents = sales.reduce((sum, s) => sum + s.commissionCents, 0);
-  const totalNetCents = sales.reduce((sum, s) => sum + s.sellerNetCents, 0);
+  // Somente pedidos com pagamento REALMENTE aprovado contam como vendas realizadas (Regras Obrigatórias 1, 2 e 5)
+  const approvedSales = sales.filter(
+    (s) => s.paymentStatus === 'APPROVED' && s.status !== 'AWAITING_PAYMENT' && s.status !== 'CANCELLED'
+  );
+  const totalGrossCents = approvedSales.reduce((sum, s) => sum + s.totalGrossCents, 0);
+  const totalCommissionCents = approvedSales.reduce((sum, s) => sum + s.commissionCents, 0);
+  const totalNetCents = approvedSales.reduce((sum, s) => sum + s.sellerNetCents, 0);
 
   const activeCount = myProducts.length;
   const quotaPercent = Math.min(100, Math.round((activeCount / maxQuota) * 100));
@@ -459,6 +463,7 @@ export const SellerDashboardView: React.FC<SellerDashboardViewProps> = ({
                 <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider">
                   <th className="pb-3">Código</th>
                   <th className="pb-3">Data</th>
+                  <th className="pb-3">Pedidos & Mercado Pago</th>
                   <th className="pb-3">Valor Líquido</th>
                   <th className="pb-3">Status</th>
                   <th className="pb-3 text-right">Data de Pagamento</th>
@@ -471,6 +476,26 @@ export const SellerDashboardView: React.FC<SellerDashboardViewProps> = ({
                     <td className="py-3 text-slate-500">
                       {new Date(req.requestedAt).toLocaleDateString('pt-BR')} às{' '}
                       {new Date(req.requestedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </td>
+                    <td className="py-3 text-slate-600">
+                      {req.linkedOrders && req.linkedOrders.length > 0 ? (
+                        <div className="space-y-1">
+                          {req.linkedOrders.map((o) => (
+                            <div key={o.orderId} className="flex items-center gap-1.5 font-mono text-[11px]">
+                              <span className="font-bold text-slate-800">#{o.orderNumber}</span>
+                              {o.mpPaymentId ? (
+                                <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-50 text-sky-700 border border-sky-100">
+                                  MP: {o.mpPaymentId}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-slate-400">MP: pendente</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 text-[11px]">—</span>
+                      )}
                     </td>
                     <td className="py-3 font-black text-emerald-700">
                       {(req.netAmountCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
@@ -542,7 +567,12 @@ export const SellerDashboardView: React.FC<SellerDashboardViewProps> = ({
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
                         Status: {order.status}
                       </span>
-                      {order.payoutStatus === 'RELEASED' || order.payoutStatus === 'AVAILABLE_FOR_PAYOUT' ? (
+                      {order.status === 'AWAITING_PAYMENT' || order.paymentStatus !== 'APPROVED' ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                          <Clock className="w-3 h-3 text-slate-500" />
+                          Aguardando Pagamento Mercado Pago (Sem Saldo)
+                        </span>
+                      ) : (order.status === 'DELIVERED' && order.deliveryCodeUsed) ? (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
                           <CheckCircle className="w-3 h-3 text-emerald-600" />
                           Repasse Disponível (Código Confirmado)
@@ -555,7 +585,9 @@ export const SellerDashboardView: React.FC<SellerDashboardViewProps> = ({
                       ) : (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
                           <Clock className="w-3 h-3 text-amber-600" />
-                          Repasse Retido (Aguardando Código de Entrega)
+                          {order.status === 'DELIVERED'
+                            ? 'Entregue — Aguardando Validação do Código de 4 Dígitos'
+                            : 'Saldo em Escrow (Aguardando Entrega e Código)'}
                         </span>
                       )}
                     </div>

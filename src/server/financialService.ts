@@ -154,11 +154,13 @@ export async function recordLedgerEntry(params: {
 
 /**
  * 3. SINCRONIZAÇÃO E CÁLCULO ATÔMICO DO SALDO DO VENDEDOR (sellerBalances)
- * Separação matemática exata:
- * - pendingBalanceCents: pagamentos aprovados mas produtos ainda em trânsito/preparo (sem código validado)
- * - availableBalanceCents: pedidos entregues com código validado, ainda não solicitados para payout
- * - paidBalanceCents: valor efetivamente liquidado e transferido ao vendedor
- * - platformRevenueCents: comissão arrecadada pelo VEND+ (7% ou 4%)
+ * Regras Estritas:
+ * 1. NUNCA criar saldo para vendedor apenas porque o pedido foi criado, o checkout aberto, o QR Code Pix gerado,
+ *    ou o pedido mudou para AWAITING_PAYMENT, READY_FOR_PICKUP ou DELIVERED.
+ * 2. O pagamento SOMENTE é considerado recebido se o Mercado Pago confirmou o pagamento (paymentStatus === 'APPROVED' e mpPaymentId válido).
+ * 3. ESCROW OBRIGATÓRIO: Saldo líquido permanece em pendingBalanceCents até que o produto seja entregue E o código de 4 dígitos validado (deliveryCodeUsed === true).
+ * 4. DELIVERED sozinho NÃO libera saldo: DELIVERED + deliveryCodeUsed === true = CONDIÇÃO ÚNICA PARA DISPONIBILIZAR FUNDOS.
+ * 5. Se o pedido for DELIVERED mas deliveryCodeUsed === false, o valor permanece retido em pendingBalanceCents (ou sincronizado para WAITING_CONFIRMATION).
  */
 export async function syncSellerBalance(sellerId: number) {
   return await withLock(`balance_sync_${sellerId}`, async () => {
@@ -173,23 +175,40 @@ export async function syncSellerBalance(sellerId: number) {
     let totalGrossSalesCents = 0;
 
     for (const ord of sellerOrders) {
-      // Must have approved payment
-      const isPaid = ord.paymentStatus === 'APPROVED' || (ord.status !== 'AWAITING_PAYMENT' && ord.status !== 'CANCELLED');
-      if (!isPaid) continue;
+      // REGRA OBRIGATÓRIA 1 & 2:
+      // O pagamento SOMENTE poderá ser considerado recebido quando o status de pagamento for efetivamente APPROVED
+      // e o pedido NÃO estiver em AWAITING_PAYMENT ou CANCELLED.
+      const hasRealApprovedPayment =
+        ord.paymentStatus === 'APPROVED' &&
+        ord.status !== 'AWAITING_PAYMENT' &&
+        ord.status !== 'CANCELLED';
+
+      if (!hasRealApprovedPayment) {
+        // Pedido não pago pelo comprador: NENHUM saldo, NENHUMA receita
+        continue;
+      }
 
       totalGrossSalesCents += ord.totalGrossCents;
       platformRevenueCents += ord.commissionCents;
 
-      if (ord.status !== 'DELIVERED') {
-        // Not delivered yet: retained in safe escrow
+      // REGRA OBRIGATÓRIA 7, 8 & 9:
+      // Condição para liberação de fundos: DELIVERED + código de 4 dígitos validado
+      const isDeliveredAndCodeVerified =
+        ord.status === 'DELIVERED' && ord.deliveryCodeUsed === true;
+
+      if (!isDeliveredAndCodeVerified) {
+        // Ainda não entregue OU entregue mas código de 4 dígitos NÃO foi validado:
+        // O valor líquido do vendedor DEVE permanecer retido no ESCROW (pendingBalanceCents)
         if (
           ord.payoutStatus === 'PENDING' ||
-          ord.payoutStatus === 'PENDING_DELIVERY_CONFIRMATION'
+          ord.payoutStatus === 'PENDING_DELIVERY_CONFIRMATION' ||
+          (ord.status === 'DELIVERED' && !ord.deliveryCodeUsed)
         ) {
           pendingBalanceCents += ord.sellerNetCents;
         }
       } else {
-        // Delivered and code verified: available for withdrawal if not already requested or paid
+        // Entrega REALMENTE confirmada com código de 4 dígitos validado!
+        // O valor transita de PENDENTE para DISPONÍVEL (se não tiver sido sacado ainda)
         if (
           ord.payoutStatus === 'AVAILABLE_FOR_PAYOUT' ||
           ord.payoutStatus === 'RELEASED'
@@ -199,7 +218,7 @@ export async function syncSellerBalance(sellerId: number) {
       }
     }
 
-    // Payout requests
+    // Payout requests já liquidados
     const requests = await db
       .select()
       .from(payoutRequests)
@@ -257,9 +276,16 @@ export async function syncSellerBalance(sellerId: number) {
 }
 
 /**
- * 4. MOTOR DE RECONCILIAÇÃO FINANCEIRA (AUDIT ENGINE)
- * Compara ORDERS, PAYMENTS, FINANCIAL_LEDGER, SELLER_BALANCES e PAYOUT_REQUESTS.
- * Identifica discrepâncias e inconsistências automaticamente.
+ * 4. MOTOR DE RECONCILIAÇÃO E AUDITORIA AUTOMÁTICA (AUDIT ENGINE)
+ * Implementa verificação rigorosa para os 8 critérios de conformidade obrigatória:
+ * 1. Pedido pago sem payment_id real
+ * 2. Saldo de vendedor sem pagamento aprovado correspondente
+ * 3. Comissão sem pagamento aprovado
+ * 4. Repasse sem saldo disponível correspondente
+ * 5. Pagamento aprovado sem lançamento no ledger
+ * 6. Lançamento duplicado no ledger
+ * 7. Pedido DELIVERED sem código validado
+ * 8. Saldo pendente sem pedido correspondente
  */
 export async function runFinancialReconciliation() {
   const allOrders = await db.select().from(orders).orderBy(desc(orders.createdAt));
@@ -267,6 +293,7 @@ export async function runFinancialReconciliation() {
   const allLedger = await db.select().from(financialLedger);
   const allPayouts = await db.select().from(payoutRequests);
   const allBalances = await db.select().from(sellerBalances);
+  const allCommissions = await db.select().from(commissions);
 
   const anomalies: Array<{
     type: string;
@@ -276,13 +303,18 @@ export async function runFinancialReconciliation() {
     details?: any;
   }> = [];
 
-  // Indexing maps
-  const paymentByOrderId = new Map<number, typeof payments.$inferSelect[]>();
+  // Mapeamentos para auditoria O(1)
+  const ordersById = new Map<number, typeof orders.$inferSelect>();
+  for (const o of allOrders) {
+    ordersById.set(o.id, o);
+  }
+
+  const approvedPaymentsByOrderId = new Map<number, typeof payments.$inferSelect[]>();
   for (const p of allPayments) {
-    if (p.orderId) {
-      const list = paymentByOrderId.get(p.orderId) || [];
+    if (p.orderId && p.status === 'APPROVED') {
+      const list = approvedPaymentsByOrderId.get(p.orderId) || [];
       list.push(p);
-      paymentByOrderId.set(p.orderId, list);
+      approvedPaymentsByOrderId.set(p.orderId, list);
     }
   }
 
@@ -293,6 +325,186 @@ export async function runFinancialReconciliation() {
     ledgerByOrderId.set(l.orderId, list);
   }
 
+  // 1. AUDITORIA: Pedido pago sem payment_id real
+  for (const ord of allOrders) {
+    if (ord.paymentStatus === 'APPROVED' || ord.status === 'PAID') {
+      const paymentsForOrder = approvedPaymentsByOrderId.get(ord.id) || [];
+      const hasRealPayment = Boolean(ord.mpPaymentId) || paymentsForOrder.some((p) => Boolean(p.mpPaymentId));
+      if (!hasRealPayment) {
+        anomalies.push({
+          type: 'PAID_ORDER_WITHOUT_REAL_PAYMENT_ID',
+          severity: 'HIGH',
+          description: `Pedido #${ord.orderNumber} marcado como pago sem payment_id real do Mercado Pago.`,
+          entityId: String(ord.id),
+        });
+      }
+    }
+  }
+
+  // 2. AUDITORIA: Saldo de vendedor sem pagamento aprovado correspondente
+  const approvedNetBySeller = new Map<number, { pending: number; available: number }>();
+  for (const ord of allOrders) {
+    const isApproved =
+      ord.paymentStatus === 'APPROVED' &&
+      ord.status !== 'AWAITING_PAYMENT' &&
+      ord.status !== 'CANCELLED' &&
+      Boolean(ord.mpPaymentId || ord.paidAt);
+
+    if (isApproved) {
+      const curr = approvedNetBySeller.get(ord.sellerId) || { pending: 0, available: 0 };
+      if (ord.status === 'DELIVERED' && ord.deliveryCodeUsed) {
+        if (ord.payoutStatus === 'AVAILABLE_FOR_PAYOUT' || ord.payoutStatus === 'RELEASED') {
+          curr.available += ord.sellerNetCents;
+        }
+      } else {
+        if (ord.payoutStatus === 'PENDING' || ord.payoutStatus === 'PENDING_DELIVERY_CONFIRMATION') {
+          curr.pending += ord.sellerNetCents;
+        }
+      }
+      approvedNetBySeller.set(ord.sellerId, curr);
+    }
+  }
+
+  for (const bal of allBalances) {
+    const expected = approvedNetBySeller.get(bal.sellerId) || { pending: 0, available: 0 };
+    if (bal.pendingBalanceCents !== expected.pending) {
+      anomalies.push({
+        type: 'SELLER_PENDING_BALANCE_MISMATCH',
+        severity: 'HIGH',
+        description: `Saldo pendente do vendedor #${bal.sellerId} diverge dos pedidos pagos reais (Registrado: ${bal.pendingBalanceCents}, Esperado: ${expected.pending}).`,
+        entityId: String(bal.sellerId),
+        details: { registeredPending: bal.pendingBalanceCents, expectedPending: expected.pending },
+      });
+    }
+    if (bal.availableBalanceCents !== expected.available) {
+      anomalies.push({
+        type: 'SELLER_AVAILABLE_BALANCE_MISMATCH',
+        severity: 'HIGH',
+        description: `Saldo disponível do vendedor #${bal.sellerId} diverge dos pedidos entregues e validados (Registrado: ${bal.availableBalanceCents}, Esperado: ${expected.available}).`,
+        entityId: String(bal.sellerId),
+        details: { registeredAvailable: bal.availableBalanceCents, expectedAvailable: expected.available },
+      });
+    }
+  }
+
+  // 3. AUDITORIA: Comissão sem pagamento aprovado
+  for (const com of allCommissions) {
+    const parentOrder = ordersById.get(com.orderId);
+    if (parentOrder && (parentOrder.paymentStatus !== 'APPROVED' || parentOrder.status === 'AWAITING_PAYMENT')) {
+      if (com.paidAt !== null || com.payoutStatus === 'AVAILABLE_FOR_PAYOUT' || com.payoutStatus === 'PAID') {
+        anomalies.push({
+          type: 'COMMISSION_WITHOUT_APPROVED_PAYMENT',
+          severity: 'HIGH',
+          description: `Comissão do pedido #${parentOrder.orderNumber} marcada como realizada sem pagamento aprovado.`,
+          entityId: String(com.id),
+        });
+      }
+    }
+  }
+
+  // 4. AUDITORIA: Repasse sem saldo disponível correspondente
+  for (const payout of allPayouts) {
+    const sellerDeliveredOrders = allOrders.filter(
+      (o) =>
+        o.sellerId === payout.sellerId &&
+        o.paymentStatus === 'APPROVED' &&
+        o.status === 'DELIVERED' &&
+        o.deliveryCodeUsed === true
+    );
+    const totalDeliveredNet = sellerDeliveredOrders.reduce((sum, o) => sum + o.sellerNetCents, 0);
+
+    // Sum of all requested or completed payouts for this seller
+    const allSellerPayouts = allPayouts.filter(
+      (p) => p.sellerId === payout.sellerId && (p.status === 'REQUESTED' || p.status === 'PROCESSING' || p.status === 'PAID')
+    );
+    const totalPayoutsSum = allSellerPayouts.reduce((sum, p) => sum + p.netAmountCents, 0);
+
+    if (totalPayoutsSum > totalDeliveredNet) {
+      anomalies.push({
+        type: 'PAYOUT_EXCEEDS_AVAILABLE_BALANCE',
+        severity: 'HIGH',
+        description: `Solicitação de repasse #${payout.requestNumber} excede o valor total líquido entregue e validado do vendedor (Repasses: ${totalPayoutsSum}, Entregue: ${totalDeliveredNet}).`,
+        entityId: String(payout.id),
+      });
+    }
+  }
+
+  // 5. AUDITORIA: Pagamento aprovado sem lançamento no ledger
+  for (const ord of allOrders) {
+    if (ord.paymentStatus === 'APPROVED' && ord.status !== 'AWAITING_PAYMENT' && ord.status !== 'CANCELLED') {
+      const ledgers = ledgerByOrderId.get(ord.id) || [];
+      const hasHold = ledgers.some((l) => l.entryType === 'ESCROW_HOLD');
+      if (!hasHold) {
+        anomalies.push({
+          type: 'APPROVED_PAYMENT_WITHOUT_LEDGER',
+          severity: 'HIGH',
+          description: `Pedido #${ord.orderNumber} tem pagamento aprovado mas não possui lançamento ESCROW_HOLD no livro-razão.`,
+          entityId: String(ord.id),
+        });
+      }
+    }
+  }
+
+  // 6. AUDITORIA: Lançamento duplicado no ledger
+  for (const [orderId, entries] of ledgerByOrderId.entries()) {
+    const holdCount = entries.filter((e) => e.entryType === 'ESCROW_HOLD').length;
+    if (holdCount > 1) {
+      anomalies.push({
+        type: 'DUPLICATE_LEDGER_ESCROW_HOLD',
+        severity: 'HIGH',
+        description: `Pedido ID #${orderId} possui ${holdCount} lançamentos ESCROW_HOLD duplicados no livro-razão.`,
+        entityId: String(orderId),
+      });
+    }
+    const releaseCount = entries.filter((e) => e.entryType === 'ESCROW_RELEASE').length;
+    if (releaseCount > 1) {
+      anomalies.push({
+        type: 'DUPLICATE_LEDGER_ESCROW_RELEASE',
+        severity: 'HIGH',
+        description: `Pedido ID #${orderId} possui ${releaseCount} lançamentos ESCROW_RELEASE duplicados no livro-razão.`,
+        entityId: String(orderId),
+      });
+    }
+  }
+
+  // 7. AUDITORIA: DELIVERED sem código validado
+  for (const ord of allOrders) {
+    if (ord.status === 'DELIVERED') {
+      if (!ord.deliveryCodeUsed) {
+        anomalies.push({
+          type: 'DELIVERED_WITHOUT_VALIDATED_CODE',
+          severity: 'HIGH',
+          description: `Pedido #${ord.orderNumber} está com status DELIVERED mas o código de entrega não foi validado (deliveryCodeUsed === false).`,
+          entityId: String(ord.id),
+        });
+      }
+      if (!ord.deliveryConfirmedAt) {
+        anomalies.push({
+          type: 'DELIVERED_WITHOUT_CONFIRMATION_TIMESTAMP',
+          severity: 'MEDIUM',
+          description: `Pedido #${ord.orderNumber} entregue sem registro de data/hora de confirmação (deliveryConfirmedAt nulo).`,
+          entityId: String(ord.id),
+        });
+      }
+    }
+  }
+
+  // 8. AUDITORIA: Saldo pendente sem pedido correspondente
+  for (const l of allLedger) {
+    if (l.entryType === 'ESCROW_HOLD') {
+      const parentOrder = ordersById.get(l.orderId);
+      if (!parentOrder) {
+        anomalies.push({
+          type: 'PENDING_BALANCE_WITHOUT_ORDER',
+          severity: 'HIGH',
+          description: `Lançamento ESCROW_HOLD #${l.transactionNumber} referencia um pedido inexistente (orderId: ${l.orderId}).`,
+          entityId: String(l.id),
+        });
+      }
+    }
+  }
+
+  // Métricas agregadas
   let totalGrossCents = 0;
   let totalCommissionsCents = 0;
   let totalPendingEscrowCents = 0;
@@ -301,34 +513,18 @@ export async function runFinancialReconciliation() {
   let totalPaidOutCents = 0;
 
   for (const ord of allOrders) {
-    const isApproved = ord.paymentStatus === 'APPROVED' || (ord.status !== 'AWAITING_PAYMENT' && ord.status !== 'CANCELLED');
+    const isApproved =
+      ord.paymentStatus === 'APPROVED' &&
+      ord.status !== 'AWAITING_PAYMENT' &&
+      ord.status !== 'CANCELLED' &&
+      Boolean(ord.mpPaymentId || ord.paidAt);
+
     if (!isApproved) continue;
 
     totalGrossCents += ord.totalGrossCents;
     totalCommissionsCents += ord.commissionCents;
 
-    // Check ledger existence
-    const ledgers = ledgerByOrderId.get(ord.id) || [];
-    if (ledgers.length === 0) {
-      anomalies.push({
-        type: 'ORDER_WITHOUT_LEDGER',
-        severity: 'HIGH',
-        description: `Pedido #${ord.orderNumber} pago sem registro correspondente no livro-razão (financial_ledger).`,
-        entityId: String(ord.id),
-      });
-    }
-
-    // Check delivery code integrity
-    if (ord.status === 'DELIVERED') {
-      if (!ord.deliveryCodeUsed) {
-        anomalies.push({
-          type: 'DELIVERED_WITHOUT_CODE_MARK',
-          severity: 'HIGH',
-          description: `Pedido #${ord.orderNumber} está marcado como DELIVERED mas deliveryCodeUsed é falso.`,
-          entityId: String(ord.id),
-        });
-      }
-
+    if (ord.status === 'DELIVERED' && ord.deliveryCodeUsed) {
       if (ord.payoutStatus === 'AVAILABLE_FOR_PAYOUT' || ord.payoutStatus === 'RELEASED') {
         totalAvailableForPayoutCents += ord.sellerNetCents;
       } else if (ord.payoutStatus === 'REQUESTED') {
@@ -337,26 +533,12 @@ export async function runFinancialReconciliation() {
         totalPaidOutCents += ord.sellerNetCents;
       }
     } else {
-      // Still in transit or preparation
       if (ord.payoutStatus === 'PENDING' || ord.payoutStatus === 'PENDING_DELIVERY_CONFIRMATION') {
         totalPendingEscrowCents += ord.sellerNetCents;
       }
     }
-
-    // Commission integrity check (7% or 4%)
-    const expectedRate = ord.commissionCents / ord.totalGrossCents;
-    if (Math.abs(expectedRate - 0.07) > 0.015 && Math.abs(expectedRate - 0.04) > 0.015) {
-      anomalies.push({
-        type: 'COMMISSION_RATE_DIVERGENCE',
-        severity: 'MEDIUM',
-        description: `Taxa da comissão calculada fora do padrão no pedido #${ord.orderNumber}. Esperado ~7% ou ~4%, calculado ${Math.round(expectedRate * 100)}%.`,
-        entityId: String(ord.id),
-        details: { commissionCents: ord.commissionCents, grossCents: ord.totalGrossCents },
-      });
-    }
   }
 
-  // Payout validation
   for (const payout of allPayouts) {
     if (payout.status === 'PAID' && !payout.paymentProofUrl && !payout.notes) {
       anomalies.push({
@@ -384,3 +566,52 @@ export async function runFinancialReconciliation() {
     auditTimestamp: new Date().toISOString(),
   };
 }
+
+/**
+ * 5. SANITIZAÇÃO E RECONCILIAÇÃO AUTOMÁTICA DE DADOS FINANCEIROS
+ * Corrige inconsistências de acordo com a Regra Obrigatória 10:
+ * - Se o pedido estiver DELIVERED mas deliveryCodeUsed === false, sincroniza o status para WAITING_CONFIRMATION
+ * - Se o pedido for AWAITING_PAYMENT, assegura que não há liberação de fundos
+ * - Sincroniza o saldo de todos os vendedores reais
+ */
+export async function sanitizeAndReconcileFinancialData() {
+  const allOrders = await db.select().from(orders);
+
+  for (const ord of allOrders) {
+    // Inconsistência 1: DELIVERED sem código validado
+    if (ord.status === 'DELIVERED' && !ord.deliveryCodeUsed) {
+      console.warn(`[Reconciliação] Corrigindo pedido #${ord.orderNumber}: marcado como DELIVERED sem código validado. Revertendo para WAITING_CONFIRMATION.`);
+      await db
+        .update(orders)
+        .set({
+          status: 'WAITING_CONFIRMATION',
+          payoutStatus: 'PENDING_DELIVERY_CONFIRMATION',
+          updatedAt: new Date(),
+        })
+        .where(eq(orders.id, ord.id));
+    }
+
+    // Inconsistência 2: Pedido não pago com status financeiro indevido
+    if (ord.paymentStatus !== 'APPROVED' || ord.status === 'AWAITING_PAYMENT') {
+      if (ord.payoutStatus === 'AVAILABLE_FOR_PAYOUT' || ord.payoutStatus === 'RELEASED') {
+        console.warn(`[Reconciliação] Corrigindo pedido #${ord.orderNumber}: payoutStatus era indevidamente ${ord.payoutStatus} para pedido não pago.`);
+        await db
+          .update(orders)
+          .set({
+            payoutStatus: 'PENDING_DELIVERY_CONFIRMATION',
+            updatedAt: new Date(),
+          })
+          .where(eq(orders.id, ord.id));
+      }
+    }
+  }
+
+  // Recalcula saldos de todos os vendedores
+  const allUsers = await db.select().from(users);
+  for (const u of allUsers) {
+    if (u.role === 'SELLER' || u.role === 'USER') {
+      await syncSellerBalance(u.id);
+    }
+  }
+}
+

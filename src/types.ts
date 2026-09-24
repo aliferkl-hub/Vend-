@@ -348,6 +348,7 @@ export interface PayoutRequest {
   paidAt?: string | null;
   seller?: { id: number; name: string; email: string };
   payoutAccount?: SellerPayoutAccount | null;
+  linkedOrders?: Array<{ orderId: number; orderNumber: string; mpPaymentId: string | null; amountCents: number }>;
 }
 
 export interface FinancialLedgerEntry {

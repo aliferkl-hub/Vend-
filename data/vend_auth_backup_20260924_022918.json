@@ -67,17 +67,6 @@
       "created_at": "2026-09-15T20:59:39.271Z"
     },
     {
-      "user_id": 3,
-      "action": "LOGIN",
-      "entity_type": "USER",
-      "entity_id": "3",
-      "details": "{\"email\":\"carlos.ferreira@vendplus.com.br\"}",
-      "ip_address": "127.0.0.1",
-      "user_agent": "node",
-      "id": 4,
-      "created_at": "2026-09-15T20:50:28.134Z"
-    },
-    {
       "user_id": 2,
       "action": "LOGIN",
       "entity_type": "USER",
@@ -87,17 +76,6 @@
       "id": 23,
       "user_agent": null,
       "created_at": "2026-09-15T21:05:08.291Z"
-    },
-    {
-      "user_id": 1,
-      "action": "LOGIN",
-      "entity_type": "USER",
-      "entity_id": "1",
-      "details": "{\"email\":\"alifergael76@gmail.com\"}",
-      "ip_address": "127.0.0.1",
-      "id": 46,
-      "user_agent": null,
-      "created_at": "2026-09-16T09:28:16.373Z"
     },
     {
       "user_id": 3,
@@ -111,17 +89,6 @@
       "created_at": "2026-09-15T20:50:49.095Z"
     },
     {
-      "user_id": 1,
-      "action": "CREATE_PRODUCT",
-      "entity_type": "PRODUCT",
-      "entity_id": "9",
-      "details": "{\"name\":\"Produto Teste Upload Fotos\",\"priceCents\":15000,\"photosCount\":3}",
-      "id": 47,
-      "ip_address": null,
-      "user_agent": null,
-      "created_at": "2026-09-16T09:28:16.460Z"
-    },
-    {
       "user_id": 3,
       "action": "LOGIN",
       "entity_type": "USER",
@@ -133,17 +100,6 @@
       "created_at": "2026-09-15T20:50:35.401Z"
     },
     {
-      "user_id": 10,
-      "action": "REGISTER",
-      "entity_type": "USER",
-      "entity_id": "10",
-      "details": "{\"email\":\"alifermadeiro@hotmail.com\",\"role\":\"USER\"}",
-      "ip_address": "127.0.0.1",
-      "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.1 Mobile/15E148 Safari/604.1",
-      "id": 45,
-      "created_at": "2026-09-16T09:11:16.407Z"
-    },
-    {
       "user_id": 3,
       "action": "LOGIN",
       "entity_type": "USER",
@@ -153,6 +109,39 @@
       "user_agent": "node",
       "id": 9,
       "created_at": "2026-09-15T20:51:35.127Z"
+    },
+    {
+      "user_id": 1,
+      "action": "LOGIN",
+      "entity_type": "USER",
+      "entity_id": "1",
+      "details": "{\"email\":\"alifergael76@gmail.com\"}",
+      "ip_address": "127.0.0.1",
+      "id": 46,
+      "user_agent": null,
+      "created_at": "2026-09-16T09:28:16.373Z"
+    },
+    {
+      "user_id": 1,
+      "action": "CREATE_PRODUCT",
+      "entity_type": "PRODUCT",
+      "entity_id": "9",
+      "details": "{\"name\":\"Produto Teste Upload Fotos\",\"priceCents\":15000,\"photosCount\":3}",
+      "id": 47,
+      "ip_address": null,
+      "user_agent": null,
+      "created_at": "2026-09-16T09:28:16.460Z"
+    },
+    {
+      "user_id": 10,
+      "action": "REGISTER",
+      "entity_type": "USER",
+      "entity_id": "10",
+      "details": "{\"email\":\"alifermadeiro@hotmail.com\",\"role\":\"USER\"}",
+      "ip_address": "127.0.0.1",
+      "user_agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6.1 Mobile/15E148 Safari/604.1",
+      "id": 45,
+      "created_at": "2026-09-16T09:11:16.407Z"
     },
     {
       "user_id": 1,
@@ -230,27 +219,20 @@
       "user_agent": "node",
       "id": 7,
       "created_at": "2026-09-15T20:50:52.503Z"
+    },
+    {
+      "user_id": 3,
+      "action": "LOGIN",
+      "entity_type": "USER",
+      "entity_id": "3",
+      "details": "{\"email\":\"carlos.ferreira@vendplus.com.br\"}",
+      "ip_address": "127.0.0.1",
+      "user_agent": "node",
+      "id": 4,
+      "created_at": "2026-09-15T20:50:28.134Z"
     }
   ],
   "categories": [
-    {
-      "name": "Eletrodomésticos",
-      "slug": "eletrodomesticos",
-      "icon": "Coffee",
-      "description": "Cafeteiras, fritadeiras air fryer, liquidificadores e micro-ondas",
-      "id": 7,
-      "is_active": true,
-      "created_at": "2026-09-15T20:50:14.993Z"
-    },
-    {
-      "name": "Pet Shop e Cuidados",
-      "slug": "pet",
-      "icon": "Dog",
-      "description": "Rações premium, brinquedos, caminhas e acessórios pet",
-      "id": 8,
-      "is_active": true,
-      "created_at": "2026-09-15T20:50:14.995Z"
-    },
     {
       "name": "Serviços Especializados",
       "slug": "servicos",
@@ -340,6 +322,24 @@
       "id": 6,
       "is_active": true,
       "created_at": "2026-09-15T20:50:14.991Z"
+    },
+    {
+      "name": "Eletrodomésticos",
+      "slug": "eletrodomesticos",
+      "icon": "Coffee",
+      "description": "Cafeteiras, fritadeiras air fryer, liquidificadores e micro-ondas",
+      "id": 7,
+      "is_active": true,
+      "created_at": "2026-09-15T20:50:14.993Z"
+    },
+    {
+      "name": "Pet Shop e Cuidados",
+      "slug": "pet",
+      "icon": "Dog",
+      "description": "Rações premium, brinquedos, caminhas e acessórios pet",
+      "id": 8,
+      "is_active": true,
+      "created_at": "2026-09-15T20:50:14.995Z"
     }
   ],
   "plans": [
@@ -696,102 +696,6 @@
   "sessions": [
     {
       "user_id": 2,
-      "token": "756fde14fcac3810363ff1ddf9727eb1c3c1c2ab1e314432445a462990e7ce1e",
-      "expires_at": "2026-10-15T20:59:39.265Z",
-      "ip_address": "127.0.0.1",
-      "id": 14,
-      "user_agent": null,
-      "created_at": "2026-09-15T20:59:39.268Z",
-      "session_id": null,
-      "last_used_at": null,
-      "revoked_at": null
-    },
-    {
-      "user_id": 3,
-      "token": "450c62e2466ed43f4ff3ef8fa3a2f83859416792e2465f341bab5c0cb0b544e0",
-      "expires_at": "2026-10-15T20:51:35.115Z",
-      "ip_address": "127.0.0.1",
-      "user_agent": "node",
-      "id": 8,
-      "created_at": "2026-09-15T20:51:35.123Z",
-      "session_id": null,
-      "last_used_at": null,
-      "revoked_at": null
-    },
-    {
-      "user_id": 4,
-      "token": "be284c32c607bcd3f7abc3c2ee1fe971bd6f35421dfb8691dc258a91a42e477a",
-      "expires_at": "2026-10-15T20:50:52.498Z",
-      "ip_address": "127.0.0.1",
-      "user_agent": "node",
-      "id": 6,
-      "created_at": "2026-09-15T20:50:52.501Z",
-      "session_id": null,
-      "last_used_at": null,
-      "revoked_at": null
-    },
-    {
-      "user_id": 2,
-      "token": "deb254e759163b011dbfd12e867d3ebdfdd8968a8a82c29d537883fe763c4bdb",
-      "expires_at": "2026-10-15T21:04:44.471Z",
-      "ip_address": "127.0.0.1",
-      "id": 17,
-      "user_agent": null,
-      "created_at": "2026-09-15T21:04:44.474Z",
-      "session_id": null,
-      "last_used_at": null,
-      "revoked_at": null
-    },
-    {
-      "user_id": 3,
-      "token": "ce31528a1ce4f581102f0c84a8dea170e6e26e98f54da90d98125e39a6edeef1",
-      "expires_at": "2026-10-15T20:50:49.083Z",
-      "ip_address": "127.0.0.1",
-      "user_agent": "node",
-      "id": 5,
-      "created_at": "2026-09-15T20:50:49.091Z",
-      "session_id": null,
-      "last_used_at": null,
-      "revoked_at": null
-    },
-    {
-      "user_id": 3,
-      "token": "6b76231019f582793be260132993731b6ff8bb01bf48066c3ed240c7ae77cf8b",
-      "expires_at": "2026-10-15T20:50:35.389Z",
-      "ip_address": "127.0.0.1",
-      "user_agent": "node",
-      "id": 4,
-      "created_at": "2026-09-15T20:50:35.398Z",
-      "session_id": null,
-      "last_used_at": null,
-      "revoked_at": null
-    },
-    {
-      "user_id": 2,
-      "token": "556f544b99fc338ec5bad80277e77fe20ae6a1843b837f1dc77683602698680c",
-      "expires_at": "2026-10-16T08:59:33.788Z",
-      "ip_address": "127.0.0.1",
-      "user_agent": "node",
-      "id": 30,
-      "created_at": "2026-09-16T08:59:33.791Z",
-      "session_id": null,
-      "last_used_at": null,
-      "revoked_at": null
-    },
-    {
-      "user_id": 3,
-      "token": "07c5349792cb04a5ae408c6c87b8d3471f02bbcd611a86e13448f7d3d4bd22e4",
-      "expires_at": "2026-10-15T20:50:28.130Z",
-      "ip_address": "127.0.0.1",
-      "user_agent": "node",
-      "id": 3,
-      "created_at": "2026-09-15T20:50:28.133Z",
-      "session_id": null,
-      "last_used_at": null,
-      "revoked_at": null
-    },
-    {
-      "user_id": 2,
       "token": "1f3bacba9e2158efcae6514279126949c9b81b930ff454bbfdbdb5d5d2283fcd",
       "expires_at": "2026-10-16T09:00:17.606Z",
       "ip_address": "127.0.0.1",
@@ -909,6 +813,102 @@
       "user_agent": null,
       "created_at": "2026-09-16T09:09:01.081Z",
       "id": 40
+    },
+    {
+      "user_id": 2,
+      "token": "756fde14fcac3810363ff1ddf9727eb1c3c1c2ab1e314432445a462990e7ce1e",
+      "expires_at": "2026-10-15T20:59:39.265Z",
+      "ip_address": "127.0.0.1",
+      "id": 14,
+      "user_agent": null,
+      "created_at": "2026-09-15T20:59:39.268Z",
+      "session_id": null,
+      "last_used_at": null,
+      "revoked_at": null
+    },
+    {
+      "user_id": 3,
+      "token": "450c62e2466ed43f4ff3ef8fa3a2f83859416792e2465f341bab5c0cb0b544e0",
+      "expires_at": "2026-10-15T20:51:35.115Z",
+      "ip_address": "127.0.0.1",
+      "user_agent": "node",
+      "id": 8,
+      "created_at": "2026-09-15T20:51:35.123Z",
+      "session_id": null,
+      "last_used_at": null,
+      "revoked_at": null
+    },
+    {
+      "user_id": 4,
+      "token": "be284c32c607bcd3f7abc3c2ee1fe971bd6f35421dfb8691dc258a91a42e477a",
+      "expires_at": "2026-10-15T20:50:52.498Z",
+      "ip_address": "127.0.0.1",
+      "user_agent": "node",
+      "id": 6,
+      "created_at": "2026-09-15T20:50:52.501Z",
+      "session_id": null,
+      "last_used_at": null,
+      "revoked_at": null
+    },
+    {
+      "user_id": 2,
+      "token": "deb254e759163b011dbfd12e867d3ebdfdd8968a8a82c29d537883fe763c4bdb",
+      "expires_at": "2026-10-15T21:04:44.471Z",
+      "ip_address": "127.0.0.1",
+      "id": 17,
+      "user_agent": null,
+      "created_at": "2026-09-15T21:04:44.474Z",
+      "session_id": null,
+      "last_used_at": null,
+      "revoked_at": null
+    },
+    {
+      "user_id": 3,
+      "token": "ce31528a1ce4f581102f0c84a8dea170e6e26e98f54da90d98125e39a6edeef1",
+      "expires_at": "2026-10-15T20:50:49.083Z",
+      "ip_address": "127.0.0.1",
+      "user_agent": "node",
+      "id": 5,
+      "created_at": "2026-09-15T20:50:49.091Z",
+      "session_id": null,
+      "last_used_at": null,
+      "revoked_at": null
+    },
+    {
+      "user_id": 3,
+      "token": "6b76231019f582793be260132993731b6ff8bb01bf48066c3ed240c7ae77cf8b",
+      "expires_at": "2026-10-15T20:50:35.389Z",
+      "ip_address": "127.0.0.1",
+      "user_agent": "node",
+      "id": 4,
+      "created_at": "2026-09-15T20:50:35.398Z",
+      "session_id": null,
+      "last_used_at": null,
+      "revoked_at": null
+    },
+    {
+      "user_id": 2,
+      "token": "556f544b99fc338ec5bad80277e77fe20ae6a1843b837f1dc77683602698680c",
+      "expires_at": "2026-10-16T08:59:33.788Z",
+      "ip_address": "127.0.0.1",
+      "user_agent": "node",
+      "id": 30,
+      "created_at": "2026-09-16T08:59:33.791Z",
+      "session_id": null,
+      "last_used_at": null,
+      "revoked_at": null
+    },
+    {
+      "user_id": 3,
+      "token": "07c5349792cb04a5ae408c6c87b8d3471f02bbcd611a86e13448f7d3d4bd22e4",
+      "expires_at": "2026-10-15T20:50:28.130Z",
+      "ip_address": "127.0.0.1",
+      "user_agent": "node",
+      "id": 3,
+      "created_at": "2026-09-15T20:50:28.133Z",
+      "session_id": null,
+      "last_used_at": null,
+      "revoked_at": null
     }
   ],
   "stores": [
@@ -1042,15 +1042,15 @@
   ],
   "seller_balances": [
     {
-      "seller_id": 10,
+      "seller_id": 3,
       "pending_balance_cents": 0,
       "available_balance_cents": 0,
       "paid_balance_cents": 0,
       "platform_revenue_cents": 0,
       "total_gross_sales_cents": 0,
-      "last_synced_at": "2026-09-24T02:29:18.173Z",
-      "updated_at": "2026-09-24T02:29:18.173Z",
-      "id": 21
+      "last_synced_at": "2026-09-24T02:29:12.243Z",
+      "updated_at": "2026-09-24T02:29:12.243Z",
+      "id": 22
     },
     {
       "seller_id": 1,
@@ -1075,15 +1075,15 @@
       "id": 20
     },
     {
-      "seller_id": 3,
+      "seller_id": 10,
       "pending_balance_cents": 0,
       "available_balance_cents": 0,
       "paid_balance_cents": 0,
       "platform_revenue_cents": 0,
       "total_gross_sales_cents": 0,
-      "last_synced_at": "2026-09-24T02:29:18.212Z",
-      "updated_at": "2026-09-24T02:29:18.212Z",
-      "id": 22
+      "last_synced_at": "2026-09-24T02:29:12.211Z",
+      "updated_at": "2026-09-24T02:29:12.211Z",
+      "id": 21
     },
     {
       "seller_id": 4,
@@ -1092,8 +1092,8 @@
       "paid_balance_cents": 0,
       "platform_revenue_cents": 0,
       "total_gross_sales_cents": 0,
-      "last_synced_at": "2026-09-24T02:29:18.247Z",
-      "updated_at": "2026-09-24T02:29:18.247Z",
+      "last_synced_at": "2026-09-24T02:29:12.273Z",
+      "updated_at": "2026-09-24T02:29:12.273Z",
       "id": 23
     }
   ],

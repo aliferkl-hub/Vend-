@@ -167,6 +167,13 @@ router.post('/confirm-code', requireAuth, async (req: AuthRequest, res) => {
         return res.status(400).json({ error: 'NEGADO: Este código já foi utilizado e a entrega já está confirmada.' });
       }
 
+      // Check if order payment is officially APPROVED (Regras Obrigatórias 1, 2, 5 e 9)
+      if (order.paymentStatus !== 'APPROVED' || order.status === 'AWAITING_PAYMENT' || order.status === 'CANCELLED') {
+        return res.status(400).json({
+          error: 'NEGADO: A entrega deste pedido não pode ser validada porque o pagamento ainda não foi confirmado pelo Mercado Pago.',
+        });
+      }
+
       // Fetch code from delivery_codes table
       const [codeRecord] = await db
         .select()
