@@ -460,8 +460,36 @@ export class MemoryPool {
 
   async connect() {
     const client = await this.pool.connect();
+    let transactionBackup: { restore: () => void } | null = null;
+
+    const query = async (queryObj: any, values?: any[]) => {
+      const text = typeof queryObj === 'string' ? queryObj : queryObj?.text;
+      const command = text?.trim().toUpperCase();
+
+      // pg-mem's createPg adapter executes every query against the root state
+      // and does not implement BEGIN/ROLLBACK. Use its O(1) backup API so the
+      // local fallback preserves the same atomic behavior as PostgreSQL.
+      if (command === 'BEGIN') {
+        transactionBackup = this.memDb.backup();
+        return { rows: [], fields: [] };
+      }
+
+      if (command === 'COMMIT') {
+        transactionBackup = null;
+        return { rows: [], fields: [] };
+      }
+
+      if (command === 'ROLLBACK') {
+        transactionBackup?.restore();
+        transactionBackup = null;
+        return { rows: [], fields: [] };
+      }
+
+      return this.wrapQuery(client.query.bind(client))(queryObj, values);
+    };
+
     return {
-      query: this.wrapQuery(client.query.bind(client)),
+      query,
       release: client.release ? client.release.bind(client) : () => {},
     };
   }

@@ -29,6 +29,10 @@ import {
 } from '../src/server/mercadopagoService.ts';
 import crypto from 'crypto';
 import { eq, inArray } from 'drizzle-orm';
+import express from 'express';
+import { createServer } from 'node:http';
+import storeRoutes from '../src/server/storeRoutes.ts';
+import { categories, products, stores } from '../src/db/schema.ts';
 
 interface TestResult {
   scenarioId: number;
@@ -42,6 +46,36 @@ const results: TestResult[] = [];
 
 function assert(condition: boolean, msg: string) {
   if (!condition) throw new Error(msg);
+}
+
+async function postJson(app: any, path: string, body: Record<string, any>) {
+  const server = createServer(app);
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+
+  try {
+    const address = server.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('Servidor HTTP de teste não iniciou corretamente');
+    }
+
+    const response = await fetch(`http://127.0.0.1:${address.port}${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    return {
+      status: response.status,
+      body: await response.json(),
+    };
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((err) => (err ? reject(err) : resolve()));
+    });
+  }
 }
 
 export async function runAllFinancialTests(): Promise<{
@@ -837,6 +871,137 @@ export async function runAllFinancialTests(): Promise<{
 
     const releaseResult = await releaseEscrowForEligibleOrder(staleOrder.id);
     assert(releaseResult.alreadyReleased === true, 'Liberação idempotente deve reconhecer o escrow já convertido');
+  });
+
+  // 30. CRIAÇÃO ATÔMICA DA LOJA COM IA
+  await runScenario(30, 'Falha na inserção de produto desfaz a loja inteira e permite nova tentativa', async () => {
+    const [category] = await db.select({ id: categories.id }).from(categories).limit(1);
+    assert(Boolean(category), 'O teste HTTP precisa de ao menos uma categoria cadastrada');
+
+    const validStoreName = `Atomic Store Valid ${testRunId}`;
+    const failedStoreName = `Atomic Store Retry ${testRunId}`;
+    const validProductName = `Atomic Product Valid ${testRunId}`;
+    const firstFailedProductName = `Atomic Product Before Failure ${testRunId}`;
+    const retryProductName = `Atomic Product Retry ${testRunId}`;
+
+    const app = express();
+    app.use(express.json());
+    app.use((req: any, _res: any, next: () => void) => {
+      req.user = sellerFree;
+      next();
+    });
+    app.use('/api/stores', storeRoutes);
+
+    const requestBase = {
+      niche: 'Eletrônicos',
+      targetAudience: 'Consumidores locais',
+      selectedProductOrigin: 'CLIENT',
+      profitMarginPercent: 35,
+      customProducts: [],
+    };
+
+    try {
+      const validResponse = await postJson(app, '/api/stores/generate-ai-store', {
+        ...requestBase,
+        storeName: validStoreName,
+        customProducts: [
+          {
+            name: validProductName,
+            imageUrl: 'https://example.com/atomic-valid.jpg',
+            costPriceCents: 10000,
+            stock: 2,
+          },
+        ],
+      });
+
+      assert(validResponse.status === 201, `Criação válida deve retornar 201, recebido ${validResponse.status}`);
+      assert(validResponse.body.productsCount === 1, 'Criação válida deve retornar um produto no catálogo');
+
+      const [validStore] = await db.select().from(stores).where(eq(stores.slug, validResponse.body.slug)).limit(1);
+      assert(Boolean(validStore), 'A criação válida deve persistir a loja');
+      if (!validStore) throw new Error('A criação válida deve persistir a loja');
+      const validProducts = await db.select().from(products).where(eq(products.storeId, validStore.id));
+      assert(validProducts.length === 1, 'A criação válida deve persistir o catálogo da loja');
+
+      const failureBefore = await db
+        .select({ id: stores.id })
+        .from(stores)
+        .where(eq(stores.name, failedStoreName));
+
+      const failedResponse = await postJson(app, '/api/stores/generate-ai-store', {
+        ...requestBase,
+        storeName: failedStoreName,
+        customProducts: [
+          {
+            name: firstFailedProductName,
+            imageUrl: 'https://example.com/atomic-before-failure.jpg',
+            costPriceCents: 10000,
+            stock: 2,
+          },
+          {
+            name: `Atomic Product Invalid ${testRunId}`,
+            imageUrl: 'https://example.com/atomic-invalid.jpg',
+            costPriceCents: 10000,
+            stock: 2,
+            description: 123,
+          },
+        ],
+      });
+
+      assert(failedResponse.status === 500, `Falha de produto deve retornar 500, recebido ${failedResponse.status}`);
+      assert(
+        failedResponse.body.error === 'Erro ao gerar loja com IA. Nenhuma alteração foi salva. Tente novamente.',
+        'O usuário deve receber uma mensagem clara para tentar novamente',
+      );
+
+      const failureAfter = await db
+        .select({ id: stores.id })
+        .from(stores)
+        .where(eq(stores.name, failedStoreName));
+      assert(failureAfter.length === failureBefore.length, 'A loja não pode permanecer após falha de produto');
+
+      const orphanedProducts = await db
+        .select()
+        .from(products)
+        .where(eq(products.name, firstFailedProductName));
+      assert(orphanedProducts.length === 0, 'A falha não pode deixar produtos órfãos');
+
+      const retryResponse = await postJson(app, '/api/stores/generate-ai-store', {
+        ...requestBase,
+        storeName: failedStoreName,
+        customProducts: [
+          {
+            name: retryProductName,
+            imageUrl: 'https://example.com/atomic-retry.jpg',
+            costPriceCents: 12000,
+            stock: 3,
+          },
+        ],
+      });
+
+      assert(retryResponse.status === 201, `Nova tentativa válida deve retornar 201, recebido ${retryResponse.status}`);
+      assert(retryResponse.body.productsCount === 1, 'Nova tentativa deve criar o catálogo completo');
+
+      const [retriedStore] = await db.select().from(stores).where(eq(stores.slug, retryResponse.body.slug)).limit(1);
+      assert(Boolean(retriedStore), 'Nova tentativa deve persistir uma nova loja');
+      if (!retriedStore) throw new Error('Nova tentativa deve persistir uma nova loja');
+      const retriedProducts = await db.select().from(products).where(eq(products.storeId, retriedStore.id));
+      assert(retriedProducts.length === 1, 'Nova tentativa deve persistir o produto corrigido');
+    } finally {
+      const testStores = await db
+        .select({ id: stores.id, name: stores.name })
+        .from(stores)
+        .where(eq(stores.userId, sellerFree.id));
+      const testStoreNames = new Set([validStoreName, failedStoreName]);
+      const testStoreIds = testStores
+        .filter((store) => testStoreNames.has(store.name))
+        .map((store) => store.id);
+
+      if (testStoreIds.length > 0) {
+        await db.delete(products).where(inArray(products.storeId, testStoreIds));
+        await db.delete(stores).where(inArray(stores.id, testStoreIds));
+      }
+    }
   });
 
   // RECONCILIAÇÃO AUDIT CHECK

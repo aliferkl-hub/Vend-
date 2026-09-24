@@ -288,7 +288,9 @@ router.post('/generate-ai-store', requireAuth, async (req: AuthRequest, res) => 
     });
   } catch (err: any) {
     console.error('Error in generate-ai-store:', err);
-    return res.status(500).json({ error: 'Erro ao gerar loja com IA. ' + (err?.message || '') });
+    return res.status(500).json({
+      error: 'Erro ao gerar loja com IA. Nenhuma alteração foi salva. Tente novamente.',
+    });
   }
 });
 
