@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { randomUUID } from 'node:crypto';
 import { db } from '../db/index.ts';
 import { stores, products, services, users, categories, orders, orderItems } from '../db/schema.ts';
 import { eq, and, desc, inArray } from 'drizzle-orm';
@@ -42,7 +43,7 @@ router.get('/ecosystem-catalog', async (req, res) => {
     return res.json({
       total: list.length,
       products: list,
-    });
+  });
   } catch (err: any) {
     console.error('Error fetching ecosystem catalog:', err);
     return res.status(500).json({ error: 'Erro ao listar catálogo do ecossistema.' });
@@ -82,8 +83,31 @@ router.post('/generate-ai-store', requireAuth, async (req: AuthRequest, res) => 
       customProducts = [],
     } = req.body;
 
-    if (!niche) {
+    const margin = Number(profitMarginPercent);
+    const validOrigins = new Set(['ECOSYSTEM', 'CLIENT', 'BOTH']);
+    if (!String(niche || '').trim() || String(niche).length > 100) {
       return res.status(400).json({ error: 'O nicho da loja é obrigatório.' });
+    }
+    if (!Number.isFinite(margin) || margin < 0 || margin > 500) {
+      return res.status(400).json({ error: 'A margem deve estar entre 0% e 500%.' });
+    }
+    if (!validOrigins.has(selectedProductOrigin)) {
+      return res.status(400).json({ error: 'Origem de produtos inválida.' });
+    }
+    if (!Array.isArray(customProducts) || customProducts.length > 50) {
+      return res.status(400).json({ error: 'A loja pode ter no máximo 50 produtos personalizados.' });
+    }
+    for (const custom of customProducts) {
+      if (
+        !custom?.name?.trim() ||
+        !custom?.imageUrl?.trim() ||
+        !/^https?:\/\//i.test(custom.imageUrl) ||
+        !Number.isFinite(Number(custom.costPriceCents)) ||
+        Number(custom.costPriceCents) <= 0 ||
+        Number(custom.stock) < 0
+      ) {
+        return res.status(400).json({ error: 'Cada produto personalizado precisa de nome, imagem HTTP, custo e estoque válidos.' });
+      }
     }
 
     // Step A: Generate store brand concept & visual identity via Gemini AI
@@ -105,21 +129,12 @@ router.post('/generate-ai-store', requireAuth, async (req: AuthRequest, res) => 
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)/g, '');
-    const randomSuffix = Math.random().toString(36).substring(2, 6);
+    const randomSuffix = randomUUID().replace(/-/g, '').substring(0, 8);
     const slug = `${cleanSlugBase}-${randomSuffix}`;
 
     // Step C: Banner & Logo generation
     const logoUrl = `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(finalStoreName)}&backgroundColor=0f172a,0284c7,10b981`;
-    const bannerUrl =
-      aiConcept.visualStyle === 'dark_tech'
-        ? 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=1600&auto=format&fit=crop&q=80'
-        : aiConcept.visualStyle === 'elegant'
-        ? 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1600&auto=format&fit=crop&q=80'
-        : aiConcept.visualStyle === 'eco'
-        ? 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=1600&auto=format&fit=crop&q=80'
-        : aiConcept.visualStyle === 'vibrant'
-        ? 'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=1600&auto=format&fit=crop&q=80'
-        : 'https://images.unsplash.com/photo-1472851294608-062f824d29cc?w=1600&auto=format&fit=crop&q=80';
+    const bannerUrl = null;
 
     // Step D: Pack full theme, FAQ, about, and banners into description JSON
     const storeThemeConfig = {
@@ -145,7 +160,10 @@ router.post('/generate-ai-store', requireAuth, async (req: AuthRequest, res) => 
     };
 
     // Step E: Insert store in database
-    const [createdStore] = await db
+    let createdStore: any;
+    const insertedProducts: any[] = [];
+    await db.transaction(async (tx) => {
+      [createdStore] = await tx
       .insert(stores)
       .values({
         userId: user.id,
@@ -165,11 +183,12 @@ router.post('/generate-ai-store', requireAuth, async (req: AuthRequest, res) => 
       .returning();
 
     // Step F: Get available categories in database to link products
-    const dbCategories = await db.select().from(categories);
+    const dbCategories = await tx.select().from(categories);
+    if (dbCategories.length === 0) {
+      throw new Error('Nenhuma categoria disponível para cadastrar produtos.');
+    }
     const categoryMap = new Map(dbCategories.map((c) => [c.slug, c.id]));
     const defaultCategoryId = dbCategories[0]?.id || 1;
-
-    const insertedProducts: any[] = [];
 
     // Step G: Process Ecosystem Products (if selected)
     const selectedEcosystemProducts = VERIFIED_ECOSYSTEM_PRODUCTS.filter(
@@ -193,7 +212,7 @@ router.post('/generate-ai-store', requireAuth, async (req: AuthRequest, res) => 
 
       const prodSlug = `${slug}-${eco.id}-${Math.random().toString(36).substring(2, 5)}`;
 
-      const [p] = await db
+      const [p] = await tx
         .insert(products)
         .values({
           sellerId: user.id,
@@ -230,7 +249,7 @@ router.post('/generate-ai-store', requireAuth, async (req: AuthRequest, res) => 
 
         const prodSlug = `${slug}-custom-${Math.random().toString(36).substring(2, 6)}`;
 
-        const [p] = await db
+        const [p] = await tx
           .insert(products)
           .values({
             sellerId: user.id,
@@ -255,6 +274,7 @@ router.post('/generate-ai-store', requireAuth, async (req: AuthRequest, res) => 
         insertedProducts.push(p);
       }
     }
+    });
 
     return res.status(201).json({
       message: 'Loja virtual com IA criada com sucesso!',

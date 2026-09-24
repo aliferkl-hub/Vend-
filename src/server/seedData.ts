@@ -3,6 +3,7 @@ import { db, persistDatabase } from '../db/index.ts';
 import { users, profiles, categories, plans, products, services, stores } from '../db/schema.ts';
 import { eq, count } from 'drizzle-orm';
 import { UserRepository } from './repositories/UserRepository.ts';
+import { removeLegacyDemoData } from './demoDataCleanup.ts';
 
 export async function initializeDatabaseSeed() {
   try {
@@ -118,9 +119,16 @@ export async function initializeDatabaseSeed() {
       }
     }
 
+    const removedDemoData = await removeLegacyDemoData();
+    if (Object.values(removedDemoData).some((value) => value > 0)) {
+      console.log('[VEND+] Dados demo legados removidos com preservação de histórico.', removedDemoData);
+    }
+
     // 2. Check if products exist; if 0, seed curated demonstration products with accurate images
     const [{ productCount }] = await db.select({ productCount: count() }).from(products);
-    if (Number(productCount) === 0) {
+    // Demo catalog is intentionally disabled. New stores must be created by
+    // authenticated users through the real AI store flow.
+    if (false && Number(productCount) === 0) {
       // Get category map
       const allCats = await db.select().from(categories);
       const catMap = new Map(allCats.map((c) => [c.slug, c.id]));

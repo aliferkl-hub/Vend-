@@ -230,10 +230,8 @@ router.patch('/plans/:id', requireMasterOwner, async (req: AuthRequest, res) => 
 // 6. CLEAR DEMO DATA (Section 48)
 router.post('/clear-demo-data', requireMasterOwner, async (req: AuthRequest, res) => {
   try {
-    // Delete demo products
-    await db.delete(products).where(eq(products.isDemo, true));
-    // Delete demo services
-    await db.delete(services).where(eq(services.isDemo, true));
+    const { removeLegacyDemoData } = await import('./demoDataCleanup.ts');
+    const removed = await removeLegacyDemoData();
 
     await db.insert(auditLogs).values({
       userId: req.user!.id,
@@ -242,7 +240,7 @@ router.post('/clear-demo-data', requireMasterOwner, async (req: AuthRequest, res
       details: 'Dados de demonstração removidos pelo Master Owner.',
     });
 
-    return res.json({ message: 'Todos os dados de demonstração foram limpos com sucesso do banco de dados.' });
+    return res.json({ message: 'Todos os dados de demonstração foram limpos com sucesso do banco de dados.', removed });
   } catch (err) {
     console.error('Clear demo data error:', err);
     return res.status(500).json({ error: 'Erro ao limpar dados de demonstração.' });

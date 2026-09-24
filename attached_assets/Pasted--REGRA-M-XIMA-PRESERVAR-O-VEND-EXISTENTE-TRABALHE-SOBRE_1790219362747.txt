@@ -1,0 +1,123 @@
+### REGRA MÁXIMA — PRESERVAR O VEND+ EXISTENTE
+
+TRABALHE SOBRE O PROJETO VEND+ QUE JÁ EXISTE NO REPOSITÓRIO/AMBIENTE ATUAL.
+
+NÃO recrie o projeto do zero.
+NÃO substitua a arquitetura existente sem necessidade.
+NÃO apague funcionalidades existentes.
+NÃO remova módulos que já estão funcionando.
+NÃO faça uma versão simplificada do VEND+.
+NÃO crie um projeto paralelo.
+NÃO troque o banco/storage existente por outro sem necessidade.
+
+ANTES DE ALTERAR QUALQUER ARQUIVO:
+
+1. Analise a estrutura atual do projeto.
+2. Identifique como o Marketplace, autenticação, banco de dados, storage, Mercado Pago, pedidos, entregas, escrow, planos e Master Owner estão implementados.
+3. Identifique o código atual do módulo "Criar Loja com IA".
+4. Reutilize a infraestrutura existente sempre que possível.
+5. Faça alterações incrementais somente nos arquivos necessários.
+
+O OBJETIVO É:
+
+CORRIGIR E EVOLUIR O MÓDULO "CRIAR LOJA COM IA" DENTRO DO VEND+ EXISTENTE.
+
+TODAS AS FUNCIONALIDADES EXISTENTES DO MARKETPLACE DEVEM CONTINUAR FUNCIONANDO EXATAMENTE COMO ANTES, INCLUINDO:
+
+* VENDA. COMPRE. NEGOCIE. ENTREGUE.
+* cadastro e login;
+* vendedores;
+* compradores;
+* entregadores;
+* produtos;
+* anúncios;
+* pedidos;
+* pagamentos;
+* Mercado Pago;
+* comissão da plataforma;
+* planos;
+* escrow;
+* código de entrega de 4 dígitos;
+* confirmação de entrega;
+* repasses;
+* carteira/saldos;
+* histórico financeiro;
+* Master Owner;
+* painel administrativo;
+* demais funcionalidades já existentes.
+
+NÃO alterar regras financeiras existentes neste comando.
+
+NÃO alterar o funcionamento do Mercado Pago neste comando.
+
+NÃO alterar o fluxo de escrow neste comando.
+
+NÃO alterar o fluxo de repasse deste comando.
+
+NÃO alterar o Marketplace para transformá-lo em Loja IA.
+
+A Loja IA deve ser implementada como um módulo adicional e independente dentro do ecossistema VEND+.
+
+SE ALGUMA ALTERAÇÃO NA LOJA IA TIVER RISCO DE IMPACTAR UM MÓDULO EXISTENTE:
+
+* pare a alteração naquele ponto;
+* analise as dependências;
+* preserve o comportamento existente;
+* implemente a mudança de forma isolada.
+
+NÃO remover código simplesmente porque parece antigo sem verificar se ele pertence a alguma funcionalidade existente.
+
+NÃO apagar tabelas, coleções, rotas, componentes ou serviços sem confirmar que são exclusivamente relacionados aos dados demo/legados da Loja IA.
+
+QUALQUER LIMPEZA DE DADOS DEVE SER CIRÚRGICA:
+
+REMOVER SOMENTE:
+
+* lojas demo;
+* produtos demo;
+* imagens demo;
+* catálogos fictícios;
+* dados órfãos comprovadamente relacionados à Loja IA antiga.
+
+PRESERVAR:
+
+* usuários reais;
+* lojas reais;
+* produtos reais;
+* pedidos;
+* pagamentos;
+* transações;
+* registros financeiros;
+* entregas;
+* histórico;
+* dados do Marketplace;
+* dados necessários ao Master Owner.
+
+IMPORTANTE:
+
+NÃO FAÇA DEPLOY OU ALTERAÇÃO DE BANCO DE FORMA DESTRUTIVA SEM PRIMEIRO VERIFICAR O ESTADO ATUAL DOS DADOS.
+
+SE HOUVER DÚVIDA SOBRE A ORIGEM DE UM DADO, NÃO APAGUE AUTOMATICAMENTE.
+
+PRIMEIRO IDENTIFIQUE:
+ownerId
+storeId
+productId
+origem do dado
+relacionamentos existentes.
+
+RESULTADO ESPERADO:
+
+O VEND+ DEVE CONTINUAR SENDO O MESMO SISTEMA QUE JÁ EXISTE, PORÉM COM O MÓDULO "CRIAR LOJA COM IA" CORRIGIDO, REAL, PERSISTENTE E SEM LOJAS/PRODUTOS/IMAGENS DEMO.
+
+AO FINAL, INFORMAR:
+
+* arquivos modificados;
+* arquivos criados;
+* arquivos removidos;
+* tabelas/coleções alteradas;
+* dados demo removidos;
+* storage utilizado;
+* testes executados;
+* build/type-check;
+* confirmação de que Marketplace, Mercado Pago, pedidos, entregas, escrow, planos e Master Owner continuam preservados.
