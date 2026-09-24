@@ -31,6 +31,38 @@ export async function withLock<T>(lockKey: string, fn: () => Promise<T>, timeout
   }
 }
 
+type PayoutEligibleOrder = {
+  paymentStatus: string;
+  status: string;
+  deliveryCodeUsed: boolean;
+  payoutStatus: string;
+};
+
+/**
+ * Single source of truth for moving an order out of escrow.
+ * Payment approval, delivery, and successful 4-digit code validation are all
+ * required. Cancelled/refunded orders can never satisfy this predicate.
+ */
+export function isPayoutEligible(order: PayoutEligibleOrder): boolean {
+  const isPaymentApproved = order.paymentStatus === 'APPROVED';
+  const isDelivered = order.status === 'DELIVERED';
+  const isCancelledOrRefunded =
+    order.status === 'CANCELLED' ||
+    order.paymentStatus === 'CANCELLED' ||
+    order.paymentStatus === 'REFUNDED';
+
+  return isPaymentApproved && isDelivered && order.deliveryCodeUsed === true && !isCancelledOrRefunded;
+}
+
+const payoutAlreadyConvertedStatuses = new Set([
+  'AVAILABLE_FOR_PAYOUT',
+  'RELEASED',
+  'REQUESTED',
+  'PROCESSING',
+  'AWAITING_PROCESSOR',
+  'PAID',
+]);
+
 /**
  * 1. CALCULA A COMISSÃO E VALORES LÍQUIDOS STRICTAMENTE NO BACKEND
  * Plano Gratuito (free): 7%
@@ -102,11 +134,13 @@ export async function recordLedgerEntry(params: {
   payoutRequestId?: number | null;
   mpPaymentId?: string | null;
   metadata?: Record<string, any>;
+  database?: any;
 }) {
+  const database = params.database || db;
   const now = new Date();
   const txNumber = `TX-${params.orderNumber}-${params.entryType}-${Date.now().toString(36).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
 
-  const [entry] = await db
+  const [entry] = await database
     .insert(financialLedger)
     .values({
       transactionNumber: txNumber,
@@ -134,7 +168,7 @@ export async function recordLedgerEntry(params: {
     .returning();
 
   // Audit log for immutability
-  await db.insert(auditLogs).values({
+  await database.insert(auditLogs).values({
     userId: params.sellerId,
     action: `LEDGER_${params.entryType}`,
     entityType: 'FINANCIAL_LEDGER',
@@ -162,9 +196,9 @@ export async function recordLedgerEntry(params: {
  * 4. DELIVERED sozinho NÃO libera saldo: DELIVERED + deliveryCodeUsed === true = CONDIÇÃO ÚNICA PARA DISPONIBILIZAR FUNDOS.
  * 5. Se o pedido for DELIVERED mas deliveryCodeUsed === false, o valor permanece retido em pendingBalanceCents (ou sincronizado para WAITING_CONFIRMATION).
  */
-export async function syncSellerBalance(sellerId: number) {
+export async function syncSellerBalance(sellerId: number, database: any = db) {
   return await withLock(`balance_sync_${sellerId}`, async () => {
-    const sellerOrders = await db
+    const sellerOrders = await database
       .select()
       .from(orders)
       .where(eq(orders.sellerId, sellerId));
@@ -193,8 +227,7 @@ export async function syncSellerBalance(sellerId: number) {
 
       // REGRA OBRIGATÓRIA 7, 8 & 9:
       // Condição para liberação de fundos: DELIVERED + código de 4 dígitos validado
-      const isDeliveredAndCodeVerified =
-        ord.status === 'DELIVERED' && ord.deliveryCodeUsed === true;
+      const isDeliveredAndCodeVerified = isPayoutEligible(ord);
 
       if (!isDeliveredAndCodeVerified) {
         // Ainda não entregue OU entregue mas código de 4 dígitos NÃO foi validado:
@@ -219,7 +252,7 @@ export async function syncSellerBalance(sellerId: number) {
     }
 
     // Payout requests já liquidados
-    const requests = await db
+    const requests = await database
       .select()
       .from(payoutRequests)
       .where(eq(payoutRequests.sellerId, sellerId));
@@ -234,7 +267,7 @@ export async function syncSellerBalance(sellerId: number) {
     const now = new Date();
 
     // Upsert into sellerBalances
-    const [existing] = await db
+    const [existing] = await database
       .select()
       .from(sellerBalances)
       .where(eq(sellerBalances.sellerId, sellerId))
@@ -242,7 +275,7 @@ export async function syncSellerBalance(sellerId: number) {
 
     let updatedBalance;
     if (existing) {
-      [updatedBalance] = await db
+      [updatedBalance] = await database
         .update(sellerBalances)
         .set({
           pendingBalanceCents,
@@ -256,7 +289,7 @@ export async function syncSellerBalance(sellerId: number) {
         .where(eq(sellerBalances.id, existing.id))
         .returning();
     } else {
-      [updatedBalance] = await db
+      [updatedBalance] = await database
         .insert(sellerBalances)
         .values({
           sellerId,
@@ -273,6 +306,106 @@ export async function syncSellerBalance(sellerId: number) {
 
     return updatedBalance;
   });
+}
+
+/**
+ * Converts a validated delivery into an available payout. This function is
+ * intentionally usable with a Drizzle transaction executor so the order,
+ * commission, ledger, and balance cannot diverge.
+ */
+export async function releaseEscrowForEligibleOrder(
+  orderId: number,
+  database: any = db,
+  confirmedByUserId?: number,
+) {
+  const [order] = await database
+    .select()
+    .from(orders)
+    .where(eq(orders.id, orderId))
+    .limit(1);
+
+  if (!order || !isPayoutEligible(order)) {
+    return { released: false, order: order || null, reason: 'ORDER_NOT_ELIGIBLE' };
+  }
+
+  const existingRelease = await database
+    .select()
+    .from(financialLedger)
+    .where(
+      and(
+        eq(financialLedger.orderId, order.id),
+        eq(financialLedger.entryType, 'ESCROW_RELEASE'),
+      ),
+    )
+    .limit(1);
+
+  const hasAlreadyConverted = payoutAlreadyConvertedStatuses.has(order.payoutStatus);
+  const releaseReference = `DELIVERY_RELEASE:${order.id}`;
+  const now = new Date();
+
+  // A payout request may already have moved the order beyond AVAILABLE. Never
+  // move it backwards, but still repair a missing release ledger entry.
+  if (!hasAlreadyConverted) {
+    await database
+      .update(orders)
+      .set({
+        payoutStatus: 'AVAILABLE_FOR_PAYOUT',
+        payoutReleasedAt: order.payoutReleasedAt || now,
+        ...(confirmedByUserId ? { confirmedByUserId } : {}),
+        updatedAt: now,
+      })
+      .where(eq(orders.id, order.id));
+  }
+
+  await database
+    .update(commissions)
+    .set({
+      payoutStatus: hasAlreadyConverted ? order.payoutStatus : 'AVAILABLE_FOR_PAYOUT',
+      payoutReleasedAt: order.payoutReleasedAt || now,
+      deliveredAt: order.deliveredAt || now,
+    })
+    .where(eq(commissions.orderId, order.id));
+
+  if (existingRelease.length === 0) {
+    await recordLedgerEntry({
+      database,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      sellerId: order.sellerId,
+      buyerId: order.buyerId,
+      entryType: 'ESCROW_RELEASE',
+      grossAmountCents: order.totalGrossCents,
+      platformFeeCents: order.commissionCents,
+      sellerAmountCents: order.sellerNetCents,
+      paymentStatus: order.paymentStatus,
+      orderStatus: order.status,
+      payoutStatus: hasAlreadyConverted ? order.payoutStatus : 'AVAILABLE_FOR_PAYOUT',
+      status: 'RELEASED',
+      referenceId: releaseReference,
+      metadata: {
+        confirmedByUserId: confirmedByUserId || null,
+        releasedAt: now.toISOString(),
+      },
+    });
+  }
+
+  await database
+    .update(financialLedger)
+    .set({
+      orderStatus: order.status,
+      payoutStatus: hasAlreadyConverted ? order.payoutStatus : 'AVAILABLE_FOR_PAYOUT',
+      deliveryConfirmedAt: order.deliveryConfirmedAt || now,
+      updatedAt: now,
+    })
+    .where(eq(financialLedger.orderId, order.id));
+
+  const balance = await syncSellerBalance(order.sellerId, database);
+  return {
+    released: !hasAlreadyConverted && existingRelease.length === 0,
+    alreadyReleased: hasAlreadyConverted || existingRelease.length > 0,
+    order,
+    balance,
+  };
 }
 
 /**
@@ -591,7 +724,18 @@ export async function sanitizeAndReconcileFinancialData() {
         .where(eq(orders.id, ord.id));
     }
 
-    // Inconsistência 2: Pedido não pago com status financeiro indevido
+    // Inconsistency 2: approved payment + delivered + validated code that
+    // never completed the escrow release. Repair it through the same
+    // idempotent release path used by delivery confirmation.
+    if (isPayoutEligible(ord)) {
+      await withLock(`reconcile_release_${ord.id}`, async () => {
+        await db.transaction(async (tx) => {
+          await releaseEscrowForEligibleOrder(ord.id, tx);
+        });
+      });
+    }
+
+    // Inconsistência 3: Pedido não pago com status financeiro indevido
     if (ord.paymentStatus !== 'APPROVED' || ord.status === 'AWAITING_PAYMENT') {
       if (ord.payoutStatus === 'AVAILABLE_FOR_PAYOUT' || ord.payoutStatus === 'RELEASED') {
         console.warn(`[Reconciliação] Corrigindo pedido #${ord.orderNumber}: payoutStatus era indevidamente ${ord.payoutStatus} para pedido não pago.`);

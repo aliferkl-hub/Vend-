@@ -244,6 +244,13 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigate }) => {
             const isDelivered = order.status === 'DELIVERED';
             const isAwaitingPayment = order.status === 'AWAITING_PAYMENT';
             const isRevealed = revealedCodeOrderId === order.id;
+            const hasValidatedDelivery =
+              order.paymentStatus === 'APPROVED' &&
+              isDelivered &&
+              order.deliveryCodeUsed === true;
+            const payoutIsReleased = ['AVAILABLE_FOR_PAYOUT', 'RELEASED'].includes(order.payoutStatus || '');
+            const payoutIsRequested = ['REQUESTED', 'PROCESSING', 'AWAITING_PROCESSOR'].includes(order.payoutStatus || '');
+            const payoutIsPaid = order.payoutStatus === 'PAID';
 
             return (
               <div
@@ -415,17 +422,17 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigate }) => {
 
                     {/* Step 7: Transação Concluída & Repasse Liberado */}
                     <div className={`p-2.5 rounded-xl border flex items-start gap-2 col-span-1 sm:col-span-2 lg:col-span-3 ${
-                      order.status === 'DELIVERED'
+                      hasValidatedDelivery
                         ? 'bg-emerald-500 text-slate-950 font-bold border-emerald-400'
                         : 'bg-white border-slate-200 text-slate-400'
                     }`}>
                       <CheckCircle className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${
-                        order.status === 'DELIVERED' ? 'text-slate-950' : 'text-slate-300'
+                        hasValidatedDelivery ? 'text-slate-950' : 'text-slate-300'
                       }`} />
                       <div>
                         <span className="font-black block">6. Concluída & Repasse Disponibilizado</span>
-                        <span className={`text-[10px] ${order.status === 'DELIVERED' ? 'text-slate-800' : 'text-slate-500'}`}>
-                          {order.status === 'DELIVERED'
+                        <span className={`text-[10px] ${hasValidatedDelivery ? 'text-slate-800' : 'text-slate-500'}`}>
+                          {hasValidatedDelivery
                             ? 'Transação concluída com sucesso. Valor disponível para repasse ao vendedor.'
                             : 'O saldo só é disponibilizado para repasse após validação do seu código.'}
                         </span>
@@ -501,13 +508,19 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigate }) => {
                         <span>Repasse ao Vendedor: </span>
                         <span
                           className={`font-bold px-2 py-0.5 rounded-md ${
-                            order.payoutStatus === 'RELEASED'
+                            payoutIsReleased
                               ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                               : 'bg-amber-50 text-amber-700 border border-amber-200'
                           }`}
                         >
-                          {order.payoutStatus === 'RELEASED'
-                            ? '✓ Liberado (Recebimento Confirmado)'
+                          {payoutIsReleased
+                            ? '✓ Repasse Disponibilizado'
+                            : payoutIsPaid
+                            ? '✓ Repasse Pago'
+                            : payoutIsRequested
+                            ? '✓ Repasse em Processamento'
+                            : hasValidatedDelivery
+                            ? '✓ Recebimento Validado — Repasse em regularização'
                             : '⏳ Pendente (Aguardando Confirmação do Código)'}
                         </span>
                       </div>

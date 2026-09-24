@@ -541,6 +541,11 @@ export const SellerDashboardView: React.FC<SellerDashboardViewProps> = ({
           <div className="space-y-3">
             {sales.map((order) => {
               const isDelivered = order.status === 'DELIVERED';
+              const payoutIsAvailable =
+                order.paymentStatus === 'APPROVED' &&
+                isDelivered &&
+                order.deliveryCodeUsed === true &&
+                ['AVAILABLE_FOR_PAYOUT', 'RELEASED'].includes(order.payoutStatus || '');
               const canVerifyCode =
                 order.status === 'READY_FOR_PICKUP' ||
                 order.status === 'IN_TRANSIT' ||
@@ -572,7 +577,7 @@ export const SellerDashboardView: React.FC<SellerDashboardViewProps> = ({
                           <Clock className="w-3 h-3 text-slate-500" />
                           Aguardando Pagamento Mercado Pago (Sem Saldo)
                         </span>
-                      ) : (order.status === 'DELIVERED' && order.deliveryCodeUsed) ? (
+                      ) : payoutIsAvailable ? (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
                           <CheckCircle className="w-3 h-3 text-emerald-600" />
                           Repasse Disponível (Código Confirmado)

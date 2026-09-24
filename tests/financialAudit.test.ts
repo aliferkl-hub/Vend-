@@ -17,6 +17,8 @@ import {
   syncSellerBalance,
   withLock,
   runFinancialReconciliation,
+  releaseEscrowForEligibleOrder,
+  sanitizeAndReconcileFinancialData,
 } from '../src/server/financialService.ts';
 import {
   settlePayment,
@@ -49,7 +51,7 @@ export async function runAllFinancialTests(): Promise<{
   results: TestResult[];
 }> {
   console.log('\n======================================================');
-  console.log(' INICIANDO BATERIA DE TESTES FINANCEIROS VEND+ (18 CENÁRIOS)');
+  console.log(' INICIANDO BATERIA DE TESTES FINANCEIROS VEND+ (29 CENÁRIOS)');
   console.log('======================================================\n');
 
   // SETUP: Test Fixtures
@@ -764,6 +766,77 @@ export async function runAllFinancialTests(): Promise<{
         `Status ${forbidden} NÃO pode ser enviado livremente pelo frontend no PATCH de status do pedido`
       );
     }
+  });
+
+  // 29. RECONCILIAÇÃO DE REPASSE APÓS CÓDIGO VALIDADO
+  await runScenario(29, 'Reconciliação libera pedido entregue sem duplicar saldo ou ledger', async () => {
+    const staleOrderNumber = `VEND-MUEW66YB-DDE8-${testRunId}`;
+    const [staleOrder] = await db
+      .insert(orders)
+      .values({
+        orderNumber: staleOrderNumber,
+        buyerId: buyer.id,
+        sellerId: sellerFree.id,
+        status: 'DELIVERED',
+        paymentStatus: 'APPROVED',
+        totalGrossCents: 199,
+        commissionCents: 14,
+        sellerNetCents: 185,
+        deliveryCode: '4827',
+        deliveryCodeUsed: true,
+        payoutStatus: 'PENDING_DELIVERY_CONFIRMATION',
+        mpPaymentId: `mp-test-${testRunId}`,
+        paidAt: new Date(),
+        deliveredAt: new Date(),
+        deliveryConfirmedAt: new Date(),
+      })
+      .returning();
+
+    await recordLedgerEntry({
+      orderId: staleOrder.id,
+      orderNumber: staleOrder.orderNumber,
+      sellerId: staleOrder.sellerId,
+      buyerId: staleOrder.buyerId,
+      entryType: 'ESCROW_HOLD',
+      grossAmountCents: staleOrder.totalGrossCents,
+      platformFeeCents: staleOrder.commissionCents,
+      sellerAmountCents: staleOrder.sellerNetCents,
+      paymentStatus: 'APPROVED',
+      orderStatus: 'PAID',
+      payoutStatus: 'PENDING_DELIVERY_CONFIRMATION',
+      status: 'HELD',
+    });
+
+    const before = await syncSellerBalance(sellerFree.id);
+
+    await sanitizeAndReconcileFinancialData();
+
+    const [reconciled] = await db.select().from(orders).where(eq(orders.id, staleOrder.id)).limit(1);
+    const [after] = await db.select().from(sellerBalances).where(eq(sellerBalances.sellerId, sellerFree.id)).limit(1);
+    const releases = await db
+      .select()
+      .from(financialLedger)
+      .where(eq(financialLedger.orderId, staleOrder.id));
+
+    assert(reconciled.payoutStatus === 'AVAILABLE_FOR_PAYOUT', 'Reconciliação deve disponibilizar o repasse');
+    assert(
+      after.availableBalanceCents >= before.availableBalanceCents + 185,
+      'O líquido do pedido inconsistente deve entrar no saldo disponível',
+    );
+    assert(releases.filter((entry) => entry.entryType === 'ESCROW_RELEASE').length === 1, 'Deve existir uma única liberação no ledger');
+
+    await sanitizeAndReconcileFinancialData();
+
+    const [afterSecondRun] = await db.select().from(sellerBalances).where(eq(sellerBalances.sellerId, sellerFree.id)).limit(1);
+    const releasesAfterSecondRun = await db
+      .select()
+      .from(financialLedger)
+      .where(eq(financialLedger.orderId, staleOrder.id));
+    assert(afterSecondRun.availableBalanceCents === after.availableBalanceCents, 'Reconciliação repetida não pode duplicar saldo');
+    assert(releasesAfterSecondRun.filter((entry) => entry.entryType === 'ESCROW_RELEASE').length === 1, 'Reconciliação repetida não pode duplicar o ledger');
+
+    const releaseResult = await releaseEscrowForEligibleOrder(staleOrder.id);
+    assert(releaseResult.alreadyReleased === true, 'Liberação idempotente deve reconhecer o escrow já convertido');
   });
 
   // RECONCILIAÇÃO AUDIT CHECK

@@ -11,8 +11,6 @@ import {
   auditLogs,
   addresses,
   orderItems,
-  financialLedger,
-  commissions,
 } from '../db/schema.ts';
 import { eq, and, or, desc } from 'drizzle-orm';
 import { AuthRequest, requireAuth, requireDriver } from '../middleware/auth.ts';
@@ -143,12 +141,14 @@ router.post('/confirm-code', requireAuth, async (req: AuthRequest, res) => {
       return res.status(400).json({ error: 'O código de entrega deve conter exatamente 4 dígitos.' });
     }
 
-    const { withLock, recordLedgerEntry, syncSellerBalance } = await import('./financialService.ts');
+    const { withLock, releaseEscrowForEligibleOrder } = await import('./financialService.ts');
 
     // Concurrency lock per order to avoid race conditions or dual validations
     return await withLock(`delivery_confirm_${orderId}`, async () => {
+      return await db.transaction(async (tx) => {
+        const database: any = tx;
       // Fetch order
-      const [order] = await db.select().from(orders).where(eq(orders.id, parseInt(orderId))).limit(1);
+      const [order] = await database.select().from(orders).where(eq(orders.id, parseInt(orderId))).limit(1);
       if (!order) {
         return res.status(404).json({ error: 'Pedido não encontrado.' });
       }
@@ -175,7 +175,7 @@ router.post('/confirm-code', requireAuth, async (req: AuthRequest, res) => {
       }
 
       // Fetch code from delivery_codes table
-      const [codeRecord] = await db
+      const [codeRecord] = await database
         .select()
         .from(deliveryCodes)
         .where(eq(deliveryCodes.orderId, order.id))
@@ -199,7 +199,7 @@ router.post('/confirm-code', requireAuth, async (req: AuthRequest, res) => {
       const isMatch = codeRecord.code === cleanCode;
 
       // Log attempt in audit and delivery_attempts
-      await db.insert(deliveryAttempts).values({
+      await database.insert(deliveryAttempts).values({
         orderId: order.id,
         driverId: user.id,
         attemptedCode: isMatch ? '****' : cleanCode,
@@ -210,12 +210,12 @@ router.post('/confirm-code', requireAuth, async (req: AuthRequest, res) => {
 
       if (!isMatch) {
         const newAttempts = codeRecord.attempts + 1;
-        await db
+        await database
           .update(deliveryCodes)
           .set({ attempts: newAttempts })
           .where(eq(deliveryCodes.id, codeRecord.id));
 
-        await db
+        await database
           .update(orders)
           .set({ deliveryAttempts: newAttempts })
           .where(eq(orders.id, order.id));
@@ -231,7 +231,7 @@ router.post('/confirm-code', requireAuth, async (req: AuthRequest, res) => {
       const now = new Date();
 
       // Mark delivery code as used
-      await db
+      await database
         .update(deliveryCodes)
         .set({
           used: true,
@@ -239,73 +239,35 @@ router.post('/confirm-code', requireAuth, async (req: AuthRequest, res) => {
         })
         .where(eq(deliveryCodes.id, codeRecord.id));
 
-      // Update order to DELIVERED and transition payoutStatus to AVAILABLE_FOR_PAYOUT
-      const [updatedOrder] = await db
+      // Update the delivery state first; the centralized release helper below
+      // performs the payout transition in this same transaction.
+      const [updatedOrder] = await database
         .update(orders)
         .set({
           status: 'DELIVERED',
           deliveryCodeUsed: true,
           deliveredAt: now,
           deliveryConfirmedAt: now,
-          payoutStatus: 'AVAILABLE_FOR_PAYOUT',
-          payoutReleasedAt: now,
           confirmedByUserId: user.id,
           updatedAt: now,
         })
         .where(eq(orders.id, order.id))
         .returning();
 
-      // Update commissions table
-      await db
-        .update(commissions)
-        .set({
-          payoutStatus: 'AVAILABLE_FOR_PAYOUT',
-          payoutReleasedAt: now,
-          deliveredAt: now,
-        })
-        .where(eq(commissions.orderId, order.id));
-
-      // Record immutable ESCROW_RELEASE entry in financial ledger
-      await recordLedgerEntry({
-        orderId: order.id,
-        orderNumber: order.orderNumber,
-        sellerId: order.sellerId,
-        buyerId: order.buyerId,
-        entryType: 'ESCROW_RELEASE',
-        grossAmountCents: order.totalGrossCents,
-        platformFeeCents: order.commissionCents,
-        sellerAmountCents: order.sellerNetCents,
-        paymentStatus: order.paymentStatus,
-        orderStatus: 'DELIVERED',
-        payoutStatus: 'AVAILABLE_FOR_PAYOUT',
-        status: 'RELEASED',
-        referenceId: `DELIVERY_CONFIRMATION_${order.id}`,
-        metadata: {
-          confirmedByUserId: user.id,
-          deliveryType: order.deliveryType,
-          validatedAt: now.toISOString(),
-        },
-      });
-
-      // Update financial ledger state for the original order
-      await db
-        .update(financialLedger)
-        .set({
-          orderStatus: 'DELIVERED',
-          payoutStatus: 'AVAILABLE_FOR_PAYOUT',
-          deliveryConfirmedAt: now,
-          updatedAt: now,
-        })
-        .where(eq(financialLedger.orderId, order.id));
-
-      // Atomic seller balance sync: pending decreases, available increases
-      await syncSellerBalance(order.sellerId);
+      // Release escrow through the same transaction as code validation. The
+      // helper is idempotent and records a single DELIVERY_RELEASE ledger entry.
+      await releaseEscrowForEligibleOrder(order.id, database, user.id);
+      const [finalOrder] = await database
+        .select()
+        .from(orders)
+        .where(eq(orders.id, order.id))
+        .limit(1);
 
       // Update driver total deliveries count if delivery was by driver
       if (order.deliveryDriverId) {
-        const driverRecord = (await db.select().from(deliveryDrivers).where(eq(deliveryDrivers.userId, order.deliveryDriverId)))[0];
+        const driverRecord = (await database.select().from(deliveryDrivers).where(eq(deliveryDrivers.userId, order.deliveryDriverId)))[0];
         if (driverRecord) {
-          await db
+          await database
             .update(deliveryDrivers)
             .set({
               totalDeliveries: (driverRecord.totalDeliveries || 0) + 1,
@@ -317,7 +279,7 @@ router.post('/confirm-code', requireAuth, async (req: AuthRequest, res) => {
       }
 
       // Notify buyer
-      await db.insert(notifications).values({
+      await database.insert(notifications).values({
         userId: order.buyerId,
         title: order.deliveryType === 'PICKUP' ? 'Retirada concluída com sucesso!' : 'Entrega confirmada com sucesso!',
         message: `Seu pedido #${order.orderNumber} foi finalizado. O código foi validado com segurança!`,
@@ -326,7 +288,7 @@ router.post('/confirm-code', requireAuth, async (req: AuthRequest, res) => {
       });
 
       // Notify seller
-      await db.insert(notifications).values({
+      await database.insert(notifications).values({
         userId: order.sellerId,
         title: order.deliveryType === 'PICKUP' ? 'Retirada confirmada! Repasse liberado.' : 'Pedido entregue! Repasse liberado.',
         message: `O pedido #${order.orderNumber} teve o recebimento confirmado pelo cliente e o repasse foi LIBERADO no ledger do VEND+.`,
@@ -335,7 +297,7 @@ router.post('/confirm-code', requireAuth, async (req: AuthRequest, res) => {
       });
 
       // Audit log
-      await db.insert(auditLogs).values({
+      await database.insert(auditLogs).values({
         userId: user.id,
         action: 'DELIVERY_CONFIRMED',
         entityType: 'ORDER',
@@ -352,7 +314,8 @@ router.post('/confirm-code', requireAuth, async (req: AuthRequest, res) => {
       return res.json({
         success: true,
         message: 'ENTREGA CONFIRMADA COM SUCESSO! Código validado pelo backend.',
-        order: updatedOrder,
+        order: finalOrder || updatedOrder,
+      });
       });
     });
   } catch (err) {

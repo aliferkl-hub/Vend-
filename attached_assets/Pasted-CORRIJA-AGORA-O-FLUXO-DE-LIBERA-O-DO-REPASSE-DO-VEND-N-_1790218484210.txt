@@ -1,0 +1,480 @@
+CORRIJA AGORA O FLUXO DE LIBERAÇÃO DO REPASSE DO VEND+.
+
+NÃO ALTERE A INTEGRAÇÃO DO MERCADO PAGO QUE JÁ FOI CORRIGIDA.
+NÃO REMOVA O ESCROW.
+NÃO REMOVA O CÓDIGO DE 4 DÍGITOS.
+NÃO REMOVA NENHUMA FUNCIONALIDADE DO MARKETPLACE.
+
+O PROBLEMA ATUAL É ESPECIFICAMENTE A TRANSIÇÃO ENTRE:
+
+PAGAMENTO APROVADO
++
+ENTREGA CONCLUÍDA
++
+CÓDIGO DE 4 DÍGITOS VALIDADO
+
+→
+
+SALDO DISPONÍVEL PARA REPASSE.
+
+==================================================
+PROBLEMA ATUAL
+==============
+
+O pedido:
+
+#VEND-MUEW66YB-DDE8
+
+está mostrando simultaneamente:
+
+* "Entregue com Sucesso"
+* "Pagamento Aprovado — Confirmado Mercado Pago"
+* "Recebimento Validado"
+* "Código já validado com sucesso e entrega concluída."
+* "Concluída & Repasse Disponibilizado — Transação concluída com sucesso. Valor disponível para repasse ao vendedor."
+
+PORÉM TAMBÉM MOSTRA:
+
+"Repasse ao Vendedor: Pendente (Aguardando Confirmação do Código)"
+
+ISSO É INCONSISTENTE.
+
+O código já foi validado.
+
+PORTANTO, NÃO DEVE MAIS EXISTIR NENHUMA CONDIÇÃO DE "AGUARDANDO CÓDIGO" PARA ESSE PEDIDO.
+
+==================================================
+
+1. INVESTIGAR A FONTE REAL DO STATUS
+   ==================================================
+
+Não corrigir somente o texto do frontend.
+
+Investigar o backend e descobrir por que o pedido continua sendo considerado:
+
+PENDING_DELIVERY_CONFIRMATION
+
+mesmo depois de:
+
+deliveryCodeUsed === true
+
+e da confirmação da entrega.
+
+Verificar especificamente:
+
+* deliveryRoutes.ts
+* orderRoutes.ts
+* payoutRoutes.ts
+* financialService.ts
+* mercadopagoService.ts
+* SellerDashboardView.tsx
+* tela de pedidos do comprador
+* modelo/schema de Order
+* modelo/schema de Payout
+* ledger financeiro
+
+Localizar todas as condições que determinam:
+
+PENDING_DELIVERY_CONFIRMATION
+AVAILABLE_FOR_PAYOUT
+DELIVERED
+deliveryCodeUsed
+payoutStatus
+pendingBalanceCents
+availableBalanceCents
+
+Não criar uma segunda lógica paralela.
+
+Usar uma única fonte de verdade.
+
+==================================================
+2. REGRA DEFINITIVA DE LIBERAÇÃO
+================================
+
+Um pedido pode liberar o saldo do vendedor quando TODAS estas condições forem verdadeiras:
+
+paymentStatus === "APPROVED"
+
+E
+
+status === "DELIVERED"
+
+E
+
+deliveryCodeUsed === true
+
+E
+
+o pedido não estiver cancelado ou reembolsado.
+
+Quando essas condições forem satisfeitas:
+
+payoutStatus deve ser:
+
+"AVAILABLE_FOR_PAYOUT"
+
+e o valor líquido do vendedor deve sair de:
+
+pendingBalanceCents
+
+e entrar em:
+
+availableBalanceCents.
+
+==================================================
+3. NÃO EXIGIR UMA SEGUNDA CONFIRMAÇÃO
+=====================================
+
+MUITO IMPORTANTE:
+
+A validação bem-sucedida do código de 4 dígitos JÁ É A CONFIRMAÇÃO DE RECEBIMENTO.
+
+Não exigir:
+
+* outro botão;
+* outra confirmação do comprador;
+* outra aprovação manual;
+* outra confirmação do vendedor;
+* outro webhook;
+* outro código;
+* outro status intermediário.
+
+O fluxo deve ser:
+
+CÓDIGO CORRETO
+↓
+deliveryCodeUsed = true
+↓
+status = DELIVERED
+↓
+LIBERAR SALDO
+↓
+payoutStatus = AVAILABLE_FOR_PAYOUT
+↓
+availableBalanceCents aumenta
+↓
+pendingBalanceCents diminui
+↓
+"Receber meu Saldo" fica disponível.
+
+==================================================
+4. FAZER A LIBERAÇÃO NA MESMA TRANSAÇÃO
+=======================================
+
+A validação do código e a movimentação financeira devem ser atômicas.
+
+Ao validar corretamente o código:
+
+1. confirmar o código;
+2. marcar deliveryCodeUsed = true;
+3. marcar pedido como DELIVERED;
+4. localizar o escrow daquele pedido;
+5. mover o valor líquido do escrow para availableBalanceCents;
+6. atualizar payoutStatus;
+7. registrar a operação no ledger;
+8. impedir uma segunda liberação.
+
+Tudo deve ocorrer dentro de uma transação/lock apropriado.
+
+Se ocorrer erro no meio do processo, não deixar o pedido como "entregue" enquanto o saldo continuar em estado inconsistente.
+
+==================================================
+5. IDEMPOTÊNCIA
+===============
+
+A mesma confirmação de código não pode liberar dinheiro duas vezes.
+
+Antes de liberar:
+
+verificar se o escrow daquele pedido já foi convertido.
+
+Se já estiver:
+
+AVAILABLE_FOR_PAYOUT
+
+não executar uma segunda movimentação.
+
+Registrar/usar uma referência única, por exemplo:
+
+DELIVERY_RELEASE:{orderId}
+
+ou equivalente já existente no ledger.
+
+==================================================
+6. CORRIGIR O PEDIDO ATUAL
+==========================
+
+IMPORTANTE:
+
+Depois de corrigir o código, executar uma reconciliação dos pedidos existentes.
+
+Localizar pedidos que tenham:
+
+paymentStatus = APPROVED
+
+status = DELIVERED
+
+deliveryCodeUsed = true
+
+e ainda estejam com:
+
+payoutStatus = PENDING_DELIVERY_CONFIRMATION
+
+Esses pedidos estão inconsistentes e devem ser corrigidos automaticamente.
+
+Para cada um:
+
+* verificar se existe escrow válido;
+* verificar se o pagamento real foi aprovado;
+* verificar se o valor já foi liberado anteriormente;
+* se ainda não foi liberado, mover o líquido para availableBalanceCents;
+* alterar payoutStatus para AVAILABLE_FOR_PAYOUT;
+* registrar a movimentação no ledger;
+* NÃO duplicar valores.
+
+NÃO criar dinheiro novo.
+
+A reconciliação deve somente corrigir o estado financeiro que já deveria ter acontecido.
+
+==================================================
+7. CORRIGIR O PEDIDO #VEND-MUEW66YB-DDE8
+========================================
+
+Após a correção, verificar especificamente:
+
+#VEND-MUEW66YB-DDE8
+
+Ele possui:
+
+Bruto:
+R$ 1,99
+
+Comissão VEND+:
+R$ 0,14
+
+Líquido:
+R$ 1,85
+
+Pagamento:
+APPROVED
+
+Entrega:
+DELIVERED
+
+Código:
+VALIDADO / deliveryCodeUsed = true
+
+Portanto, se não existir nenhuma condição de cancelamento/reembolso:
+
+payoutStatus esperado:
+
+AVAILABLE_FOR_PAYOUT
+
+pendingBalanceCents deve deixar de conter os R$ 1,85 referentes a esse pedido.
+
+availableBalanceCents deve receber os R$ 1,85 referentes a esse pedido.
+
+==================================================
+8. CORRIGIR O FRONTEND
+======================
+
+Depois de corrigir o backend, corrigir a tela para que ela não exiba mensagens contraditórias.
+
+SE:
+
+paymentStatus === APPROVED
+status === DELIVERED
+deliveryCodeUsed === true
+payoutStatus === AVAILABLE_FOR_PAYOUT
+
+mostrar:
+
+"Recebimento Validado"
+
+"Entrega Concluída"
+
+"Repasse Disponível"
+
+"Valor disponível para repasse ao vendedor."
+
+NÃO mostrar:
+
+"Pendente"
+
+"Repasse Retido"
+
+"Aguardando Confirmação do Código"
+
+"Aguardando Código"
+
+quando o código já estiver validado.
+
+==================================================
+9. TELA DO COMPRADOR
+====================
+
+Corrigir também a tela "Meus Pedidos".
+
+Para um pedido com código validado:
+
+mostrar:
+
+1. Pagamento Aprovado ✓
+2. Em Preparação ✓
+3. Enviado / Pronto ✓
+4. Código 4 Dígitos Ativo ✓
+5. Recebimento Validado ✓
+6. Concluída & Repasse Disponibilizado ✓
+
+E:
+
+"Repasse ao Vendedor:
+Disponibilizado"
+
+NÃO mostrar:
+
+"Pendente (Aguardando Confirmação do Código)"
+
+porque essa informação estará errada.
+
+==================================================
+10. TELA DO VENDEDOR
+====================
+
+No painel do vendedor:
+
+Saldo Pendente:
+somente pedidos ainda aguardando entrega/código.
+
+Saldo Disponível:
+incluir pedidos com:
+
+APPROVED
++
+DELIVERED
++
+deliveryCodeUsed = true.
+
+Para o pedido atual:
+
+R$ 1,85
+
+deve aparecer em:
+
+SALDO DISPONÍVEL
+
+e não em:
+
+SALDO PENDENTE.
+
+O botão:
+
+"Receber meu Saldo"
+
+deve ficar disponível caso o vendedor tenha saldo disponível elegível.
+
+==================================================
+11. NÃO MEXER NA REGRA DO PAGAMENTO
+===================================
+
+IMPORTANTE:
+
+Não mudar a regra que já foi implementada:
+
+Pix não pago:
+R$ 0,00 de saldo.
+
+Pix pendente:
+R$ 0,00 de saldo.
+
+Pix rejeitado:
+R$ 0,00 de saldo.
+
+Pix aprovado:
+valor vai para escrow.
+
+Pix aprovado + entrega + código validado:
+valor vai para saldo disponível.
+
+Essa regra deve permanecer exatamente assim.
+
+==================================================
+12. TESTES OBRIGATÓRIOS
+=======================
+
+Adicionar/rodar testes específicos para este bug:
+
+TESTE 1:
+Pagamento aprovado + entrega ainda não concluída
+→ saldo permanece pendente.
+
+TESTE 2:
+Pagamento aprovado + DELIVERED + código ainda não validado
+→ saldo permanece pendente.
+
+TESTE 3:
+Pagamento aprovado + DELIVERED + deliveryCodeUsed=true
+→ saldo passa para disponível.
+
+TESTE 4:
+Executar validação do código duas vezes
+→ dinheiro é liberado somente uma vez.
+
+TESTE 5:
+Executar reconciliação depois da entrega
+→ corrige pedidos inconsistentes sem duplicar saldo.
+
+TESTE 6:
+Pedido #VEND-MUEW66YB-DDE8
+→ confirmar que os R$ 1,85 estão disponíveis para repasse.
+
+TESTE 7:
+Frontend e backend devem apresentar o mesmo estado.
+
+TESTE 8:
+Após logout/login, o saldo continua disponível.
+
+TESTE 9:
+Após restart/deploy, o saldo continua disponível.
+
+==================================================
+13. CRITÉRIO FINAL
+==================
+
+O sistema só estará correto quando este fluxo funcionar:
+
+PIX APROVADO
+↓
+R$ 1,85 EM ESCROW
+↓
+ENTREGA REALIZADA
+↓
+CÓDIGO 4 DÍGITOS VALIDADO
+↓
+R$ 1,85 SAI DO PENDENTE
+↓
+R$ 1,85 ENTRA NO DISPONÍVEL
+↓
+payoutStatus = AVAILABLE_FOR_PAYOUT
+↓
+"RECEBER MEU SALDO" DISPONÍVEL
+
+E NUNCA:
+
+CÓDIGO VALIDADO
+↓
+"AGUARDANDO CONFIRMAÇÃO DO CÓDIGO"
+
+Isso é um estado impossível e deve ser eliminado.
+
+Depois da implementação:
+
+* executar build;
+* executar type-check;
+* executar todos os testes financeiros;
+* executar testes específicos desse fluxo;
+* executar reconciliação financeira;
+* informar o resultado;
+* informar os arquivos alterados;
+* informar o estado final do pedido #VEND-MUEW66YB-DDE8;
+* NÃO alterar nenhuma outra funcionalidade do VEND+.

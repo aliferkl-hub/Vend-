@@ -1,0 +1,1 @@
+- [Financial flow verification](financial-flow-verification.md) — when PostgreSQL is configured but schema-less, use the built-in pg-mem fallback for local financial tests and verify live reconciliation separately.
