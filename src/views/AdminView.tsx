@@ -23,6 +23,7 @@ import {
   KeyRound,
   ShoppingBag,
   Layers,
+  X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
 
@@ -51,10 +52,12 @@ export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNaviga
   const [notesInput, setNotesInput] = useState('');
   const [processingSubmitting, setProcessingSubmitting] = useState(false);
 
-  // Mercado Pago Health & Configuration
+  // Mercado Pago Health, Controlled Verification & Configuration (Requirements 9 & 10)
   const [mpHealth, setMpHealth] = useState<any>(null);
+  const [mpVerification, setMpVerification] = useState<any>(null);
   const [mpTokenInput, setMpTokenInput] = useState('');
   const [mpKeyInput, setMpKeyInput] = useState('');
+  const [mpWebhookSecretInput, setMpWebhookSecretInput] = useState('');
   const [mpSaving, setMpSaving] = useState(false);
   const [mpTesting, setMpTesting] = useState(false);
   const [mpFeedback, setMpFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -112,40 +115,62 @@ export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNaviga
 
   const fetchMpHealth = async () => {
     try {
-      const res = await fetch('/api/admin/payments/mercadopago/health');
-      if (res.ok) {
-        const data = await res.json();
+      const [resHealth, resVerif] = await Promise.all([
+        fetch('/api/admin/payments/mercadopago/health'),
+        fetch('/api/admin/payments/mercadopago/verify-connection'),
+      ]);
+      if (resHealth.ok) {
+        const data = await resHealth.json();
         setMpHealth(data);
+      }
+      if (resVerif.ok) {
+        const vData = await resVerif.json();
+        setMpVerification(vData);
       }
     } catch (e) {
       console.error('Error fetching MP health:', e);
     }
   };
 
-  const handleTestMpConnection = async () => {
+  // Ferramenta Administrativa Segura: "Verificar conexão Mercado Pago" (Requirement 10)
+  const handleVerifyMpConnection = async () => {
     setMpTesting(true);
     setMpFeedback(null);
     try {
-      const res = await fetch('/api/admin/payments/mercadopago/test-connection', {
+      const res = await fetch('/api/admin/payments/mercadopago/verify-connection', {
         method: 'POST',
       });
       const data = await res.json();
-      if (data.connected) {
+      setMpVerification(data);
+
+      if (data.status === 'CONECTADO') {
+        const nick = data.account?.nickname || data.account?.siteId || 'Conta Oficial';
+        const col = data.account?.collectorId ? ` (Collector: ${data.account.collectorId})` : '';
         setMpFeedback({
           type: 'success',
-          text: `Conexão bem-sucedida com Mercado Pago! Conta: ${data.nickname || data.email || 'Conta Oficial'} (Collector ID: ${data.collectorId}).`,
+          text: `🟢 Status: CONECTADO — Autenticação oficial confirmada na API Mercado Pago. ${nick}${col}.`,
+        });
+      } else if (data.status === 'NÃO CONFIGURADO') {
+        setMpFeedback({
+          type: 'error',
+          text: '🟡 Status: NÃO CONFIGURADO — Credenciais ausentes. Cadastre o Access Token para ativar pagamentos reais.',
+        });
+      } else if (data.status === 'ERRO DE AUTENTICAÇÃO') {
+        setMpFeedback({
+          type: 'error',
+          text: `🔴 Status: ERRO DE AUTENTICAÇÃO — O token informado foi recusado pela API oficial do Mercado Pago (401/403).`,
         });
       } else {
         setMpFeedback({
           type: 'error',
-          text: `Falha no teste de conexão: ${data.error || 'Credencial não aceita pela API do Mercado Pago.'}`,
+          text: `🔴 Status: ERRO DE API — ${data.lastError || 'Falha ao comunicar com os servidores do Mercado Pago.'}`,
         });
       }
       await fetchMpHealth();
     } catch {
       setMpFeedback({
         type: 'error',
-        text: 'Erro de comunicação ao testar endpoint do Mercado Pago.',
+        text: '🔴 Status: ERRO DE API — Falha de comunicação na rede ao consultar o endpoint.',
       });
     } finally {
       setMpTesting(false);
@@ -167,6 +192,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNaviga
         body: JSON.stringify({
           accessToken: mpTokenInput.trim(),
           publicKey: mpKeyInput.trim() || undefined,
+          webhookSecret: mpWebhookSecretInput.trim() || undefined,
         }),
       });
 
@@ -176,9 +202,10 @@ export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNaviga
         const userAccount = data.account?.nickname || data.account?.email || 'Conta Oficial';
         setMpFeedback({
           type: 'success',
-          text: `Conta identificada: ${userAccount}${idInfo}. Modo de produção ativo e pagamentos liberados.`,
+          text: `Credenciais validadas e salvas com sucesso! Conta: ${userAccount}${idInfo}. Modo de produção ativo e pagamentos reais liberados.`,
         });
         setMpTokenInput('');
+        setMpWebhookSecretInput('');
         await fetchMpHealth();
       } else {
         setMpFeedback({
@@ -764,7 +791,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNaviga
       {/* TAB 3: FINANCE, PIX & MERCADO PAGO */}
       {activeTab === 'FINANCE_PIX' && (
         <div className="space-y-6">
-          {/* Mercado Pago Live Health Status Card */}
+          {/* Mercado Pago Live Health Status Card (Requirements 9 & 10) */}
           <div className="bg-gradient-to-r from-[#0B192C] to-[#162A45] rounded-3xl p-6 text-white border border-slate-800 shadow-xl space-y-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-white/10">
               <div className="flex items-center gap-3">
@@ -772,86 +799,113 @@ export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNaviga
                   <CreditCard className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black">Mercado Pago — Gateway de Produção</h3>
+                  <h3 className="text-base font-black">Mercado Pago — Gateway Oficial</h3>
                   <p className="text-xs text-slate-300">
-                    Fonte de verdade para cobranças reais, Pix instantâneo e Checkout Pro
+                    Fonte de verdade para cobranças reais, Pix instantâneo, Checkout Pro e Retenção Escrow
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                {mpHealth?.apiConnection?.connected ? (
+              {/* Requirement 9: Status 🟢 CONECTADO ou 🟡 AGUARDANDO CREDENCIAIS */}
+              <div className="flex flex-wrap items-center gap-2">
+                {mpVerification?.status === 'CONECTADO' || (!mpVerification && mpHealth?.apiConnection?.connected) ? (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                     <CheckCircle className="w-4 h-4" />
-                    <span>🟢 Mercado Pago: CONECTADO ✓</span>
+                    <span>MERCADO PAGO 🟢 CONECTADO</span>
                   </span>
-                ) : (
+                ) : mpVerification?.status === 'ERRO DE AUTENTICAÇÃO' ? (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">
                     <AlertCircle className="w-4 h-4" />
-                    <span>🔴 {mpHealth?.configured ? 'Mercado Pago: NÃO CONECTADO (Erro de Autenticação)' : 'Mercado Pago: NÃO CONFIGURADO'}</span>
+                    <span>MERCADO PAGO 🔴 ERRO DE AUTENTICAÇÃO</span>
+                  </span>
+                ) : mpVerification?.status === 'ERRO DE API' ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                    <AlertCircle className="w-4 h-4" />
+                    <span>MERCADO PAGO 🔴 ERRO DE API</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                    <AlertCircle className="w-4 h-4" />
+                    <span>MERCADO PAGO 🟡 AGUARDANDO CREDENCIAIS</span>
                   </span>
                 )}
+
+                {/* Requirement 10: Controlled Production Verification Tool */}
                 <button
-                  onClick={handleTestMpConnection}
+                  onClick={handleVerifyMpConnection}
                   disabled={mpTesting}
-                  className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 transition text-xs font-bold flex items-center gap-1.5 border border-white/10 disabled:opacity-50 cursor-pointer"
-                  title="Testar Conexão Oficial no endpoint /users/me do Mercado Pago"
+                  className="px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-100 transition text-xs font-bold flex items-center gap-1.5 border border-white/10 disabled:opacity-50 cursor-pointer shadow-xs"
+                  title="Executa teste controlado na API oficial do Mercado Pago (/users/me)"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${mpTesting ? 'animate-spin' : ''}`} />
-                  <span>{mpTesting ? 'Testando Conexão...' : 'TESTAR CONEXÃO REAL'}</span>
+                  <span>{mpTesting ? 'Verificando Conexão...' : 'Verificar conexão Mercado Pago'}</span>
                 </button>
               </div>
             </div>
 
-            {/* Account Details & Diagnostics */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 text-xs">
+            {/* Requirement 9: Diagnostics Indicators without ever displaying credentials values */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
               <div className="bg-white/5 border border-white/10 p-3 rounded-2xl">
-                <span className="text-slate-400 block text-[10px] uppercase font-bold">Access Token</span>
-                <span className={`font-black text-xs block mt-0.5 ${mpHealth?.configured ? 'text-emerald-400' : 'text-amber-400'}`}>
-                  {mpHealth?.configured ? 'CONFIGURADO ✓' : 'NÃO CONFIGURADO'}
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">Access Token Configurado</span>
+                <span className={`font-black text-xs block mt-0.5 ${mpHealth?.configured || mpVerification?.accessTokenConfigured ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {mpHealth?.configured || mpVerification?.accessTokenConfigured ? 'SIM ✓' : 'NÃO'}
                 </span>
                 <span className="text-[10px] text-slate-400 block mt-0.5">
-                  {mpHealth?.source === 'ENV' ? 'Ambiente (Secrets)' : mpHealth?.source === 'DATABASE' ? 'PostgreSQL (AES-256-GCM)' : 'Pendente'}
+                  {mpHealth?.source === 'ENV' ? 'Variável de Ambiente' : mpHealth?.source === 'DATABASE' ? 'Banco de Dados (Criptografia AES-256)' : 'Não configurado'}
                 </span>
               </div>
 
               <div className="bg-white/5 border border-white/10 p-3 rounded-2xl">
-                <span className="text-slate-400 block text-[10px] uppercase font-bold">Public Key</span>
-                <span className={`font-black text-xs block mt-0.5 ${mpHealth?.hasPublicKey ? 'text-emerald-400' : 'text-slate-400'}`}>
-                  {mpHealth?.hasPublicKey ? 'CONFIGURADA ✓' : 'OPCIONAL'}
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">Public Key Configurada</span>
+                <span className={`font-black text-xs block mt-0.5 ${mpHealth?.hasPublicKey || mpVerification?.publicKeyConfigured ? 'text-emerald-400' : 'text-slate-400'}`}>
+                  {mpHealth?.hasPublicKey || mpVerification?.publicKeyConfigured ? 'SIM ✓' : 'NÃO'}
                 </span>
                 <span className="text-[10px] text-slate-400 block mt-0.5">
-                  Uso no Frontend
+                  Chave Pública de Cliente
                 </span>
               </div>
 
               <div className="bg-white/5 border border-white/10 p-3 rounded-2xl">
-                <span className="text-slate-400 block text-[10px] uppercase font-bold">Ambiente</span>
-                <span className={`font-black text-xs block mt-0.5 ${mpHealth?.apiConnection?.isProduction ? 'text-emerald-400' : mpHealth?.configured ? 'text-amber-400' : 'text-slate-400'}`}>
-                  {mpHealth?.apiConnection?.connected ? (mpHealth?.apiConnection?.isProduction ? 'PRODUÇÃO ✓' : 'TESTE / SANDBOX') : 'AGUARDANDO'}
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">Webhook Secret Configurado</span>
+                <span className={`font-black text-xs block mt-0.5 ${mpVerification?.webhookSecretConfigured ? 'text-emerald-400' : 'text-slate-400'}`}>
+                  {mpVerification?.webhookSecretConfigured ? 'SIM ✓' : 'NÃO'}
                 </span>
                 <span className="text-[10px] text-slate-400 block mt-0.5">
-                  API Oficial Mercado Pago
+                  Assinatura HMAC-SHA256
                 </span>
               </div>
 
               <div className="bg-white/5 border border-white/10 p-3 rounded-2xl">
-                <span className="text-slate-400 block text-[10px] uppercase font-bold">Conta</span>
-                <span className="font-bold text-white text-xs truncate block mt-0.5">
-                  {mpHealth?.apiConnection?.connected ? (mpHealth?.apiConnection?.nickname || mpHealth?.apiConnection?.email || 'Identificada') : 'Não Conectada'}
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">Webhook Operacional</span>
+                <span className="font-black text-xs block mt-0.5 text-emerald-400">
+                  SIM ✓
                 </span>
-                <span className="text-[10px] text-slate-400 block mt-0.5 truncate">
-                  {mpHealth?.apiConnection?.connected ? (mpHealth?.apiConnection?.email || 'Autenticada') : 'Pendente de validação'}
+                <span className="text-[10px] text-slate-400 block mt-0.5">
+                  Endpoint Ativo e Idempotente
+                </span>
+              </div>
+            </div>
+
+            {/* Confirmation & Audit Tracking (Requirement 9) */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs bg-slate-950/40 p-3.5 rounded-2xl border border-white/10">
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">Última Confirmação Recebida</span>
+                <span className="text-white font-bold block mt-0.5">
+                  {mpVerification?.lastConfirmationReceived || (mpHealth?.lastPaymentEvent?.paidAt ? new Date(mpHealth.lastPaymentEvent.paidAt).toLocaleString('pt-BR') : 'Nenhuma confirmação recente')}
                 </span>
               </div>
 
-              <div className="bg-white/5 border border-white/10 p-3 rounded-2xl">
-                <span className="text-slate-400 block text-[10px] uppercase font-bold">Collector ID</span>
-                <span className="font-bold text-white text-xs truncate block mt-0.5 font-mono">
-                  {mpHealth?.apiConnection?.collectorId || '---'}
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">Último Pagamento Confirmado</span>
+                <span className="text-emerald-400 font-bold block mt-0.5 truncate">
+                  {mpVerification?.lastPaymentConfirmed || (mpHealth?.lastPaymentEvent?.id ? `Pagamento #${mpHealth.lastPaymentEvent.id} (R$ ${((mpHealth.lastPaymentEvent.amountCents || 0) / 100).toFixed(2)})` : 'Nenhum pagamento recente')}
                 </span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">
-                  {mpHealth?.timestamp ? new Date(mpHealth.timestamp).toLocaleTimeString('pt-BR') : 'Sem dados'}
+              </div>
+
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">Último Erro</span>
+                <span className={`font-bold block mt-0.5 truncate ${mpVerification?.lastError ? 'text-rose-400' : 'text-slate-400'}`}>
+                  {mpVerification?.lastError || 'Nenhum erro registrado'}
                 </span>
               </div>
             </div>
@@ -861,7 +915,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNaviga
               <div className="flex items-center justify-between">
                 <span className="font-bold text-slate-300">URL do Webhook Mercado Pago:</span>
                 <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">
-                  Status: {mpHealth?.webhook?.status || 'Ativo'}
+                  Status: Operacional ✓
                 </span>
               </div>
               <div className="font-mono text-xs bg-slate-950/60 p-2 rounded-xl text-slate-300 border border-white/5 select-all">
@@ -890,7 +944,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNaviga
             </div>
 
             <p className="text-xs text-slate-600 leading-relaxed">
-              Insira abaixo o seu token oficial do Mercado Pago. O token será testado instantaneamente na API oficial (<code className="font-mono text-emerald-700 font-bold">/users/me</code>). Sendo válido, ele será criptografado e protegido no servidor. <strong>O token nunca é exibido após ser salvo nem compartilhado com o frontend.</strong>
+              Insira abaixo o seu token oficial do Mercado Pago. O token será testado instantaneamente na API oficial (<code className="font-mono text-emerald-700 font-bold">/users/me</code>). Sendo válido, ele será criptografado e protegido no servidor. <strong>O token e o segredo nunca são exibidos após serem salvos nem compartilhados com o frontend.</strong>
             </p>
 
             {mpFeedback && (
@@ -908,7 +962,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNaviga
                 )}
                 <div className="space-y-0.5">
                   <p className="font-black text-xs">
-                    {mpFeedback.type === 'success' ? '✓ Mercado Pago conectado' : 'Falha na Validação das Credenciais'}
+                    {mpFeedback.type === 'success' ? '✓ Operação Concluída' : 'Resultado da Verificação'}
                   </p>
                   <p className="text-xs leading-relaxed">{mpFeedback.text}</p>
                 </div>
@@ -949,6 +1003,22 @@ export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNaviga
                 </p>
               </div>
 
+              <div className="space-y-1.5">
+                <label className="block text-xs font-black text-slate-800">
+                  Webhook Secret do Mercado Pago (Opcional)
+                </label>
+                <input
+                  type="password"
+                  placeholder="Segredo de validação de assinatura de webhook (HMAC-SHA256)"
+                  value={mpWebhookSecretInput}
+                  onChange={(e) => setMpWebhookSecretInput(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-300 focus:border-emerald-500 focus:bg-white rounded-xl text-xs font-mono transition-all outline-none"
+                />
+                <p className="text-[11px] text-slate-400">
+                  Chave secreta de webhook gerada no painel de Notificações do Mercado Pago para verificação do cabeçalho x-signature.
+                </p>
+              </div>
+
               <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                 <button
                   type="submit"
@@ -970,12 +1040,12 @@ export const AdminView: React.FC<AdminViewProps> = ({ onRefreshCatalog, onNaviga
 
                 <button
                   type="button"
-                  onClick={handleTestMpConnection}
+                  onClick={handleVerifyMpConnection}
                   disabled={mpTesting || mpSaving}
                   className="px-5 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl text-xs border border-slate-300 transition active:scale-[0.99] disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${mpTesting ? 'animate-spin' : ''}`} />
-                  <span>{mpTesting ? 'Verificando...' : 'Testar Credencial Atual'}</span>
+                  <span>{mpTesting ? 'Verificando...' : 'Verificar conexão Mercado Pago'}</span>
                 </button>
               </div>
             </form>

@@ -163,16 +163,12 @@ router.post('/checkout', requireAuth, async (req: AuthRequest, res) => {
       return res.status(400).json({ error: 'O valor dos produtos não pode ser R$ 0,00.' });
     }
 
-    // Fetch seller's plan to determine commission
-    const [sellerUser] = await db.select().from(users).where(eq(users.id, sellerId)).limit(1);
-    const sellerPlanSlug = sellerUser?.planSlug || 'free';
-    const [plan] = await db.select().from(plans).where(eq(plans.slug, sellerPlanSlug)).limit(1);
-
-    // Commission rules (Section 22 & 23):
-    // FREE: 7%, Paid: 4%
-    const commissionPercent = plan?.commissionPercent ?? (sellerPlanSlug === 'free' ? 7 : 4);
-    const commissionCents = Math.round((totalGrossCents * commissionPercent) / 100);
-    const sellerNetCents = totalGrossCents - commissionCents;
+    // Fetch seller's plan and calculate commission strictly on backend using integer cents
+    const { calculateCommission, recordLedgerEntry } = await import('./financialService.ts');
+    const { commissionPercent, commissionCents, sellerNetCents, planName } = await calculateCommission(
+      sellerId,
+      totalGrossCents
+    );
 
     // Shipping fee
     const shippingFeeCents = deliveryType === 'SHIPPING' ? 1490 : 0; // R$ 14,90
@@ -228,23 +224,24 @@ router.post('/checkout', requireAuth, async (req: AuthRequest, res) => {
       commissionPercent,
       commissionCents,
       sellerNetAmountCents: sellerNetCents,
-      planNameAtSale: plan?.name || 'FREE',
+      planNameAtSale: planName,
       payoutStatus: 'PENDING_DELIVERY_CONFIRMATION',
     });
 
-    // Record initial financial ledger entry
-    await db.insert(financialLedger).values({
-      transactionNumber: `TX-${orderNumber}`,
+    // Record initial financial ledger entry (SALE)
+    await recordLedgerEntry({
       orderId: newOrder.id,
       orderNumber,
       buyerId: buyer.id,
       sellerId,
+      entryType: 'SALE',
       grossAmountCents: finalTotalWithShipping,
       platformFeeCents: commissionCents,
       sellerAmountCents: sellerNetCents,
       paymentStatus: 'PENDING',
       orderStatus: 'AWAITING_PAYMENT',
       payoutStatus: 'PENDING_DELIVERY_CONFIRMATION',
+      status: 'PENDING',
     });
 
     // Record delivery code

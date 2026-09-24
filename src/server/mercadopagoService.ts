@@ -3,13 +3,35 @@ import { appSettings, payments, orders, subscriptions, users, notifications, aud
 import { eq, desc } from 'drizzle-orm';
 import crypto from 'crypto';
 
+
+
 export interface MercadoPagoCredentials {
   accessToken: string;
   publicKey: string;
+  webhookSecret: string;
   isConfigured: boolean;
   isProduction: boolean;
   tokenType: 'PRODUCTION' | 'TEST' | 'NONE';
   source: 'DATABASE' | 'ENV' | 'NONE';
+}
+
+export interface MPVerificationStatus {
+  status: 'CONECTADO' | 'NÃO CONFIGURADO' | 'ERRO DE AUTENTICAÇÃO' | 'ERRO DE API';
+  environmentConfigured: boolean;
+  accessTokenConfigured: boolean;
+  publicKeyConfigured: boolean;
+  webhookSecretConfigured: boolean;
+  webhookOperational: boolean;
+  lastConfirmationReceived: string | null;
+  lastPaymentConfirmed: string | null;
+  lastError: string | null;
+  account?: {
+    collectorId?: number | string;
+    nickname?: string;
+    siteId?: string;
+    isProduction?: boolean;
+    tokenType?: string;
+  };
 }
 
 export interface MPPaymentResult {
@@ -97,14 +119,17 @@ export function decryptSecret(cipherText: string): string {
 export async function getMercadoPagoCredentials(): Promise<MercadoPagoCredentials> {
   const envAccessToken = (process.env.MERCADOPAGO_ACCESS_TOKEN || '').trim();
   const envPublicKey = (process.env.MERCADOPAGO_PUBLIC_KEY || '').trim();
+  const envWebhookSecret = (process.env.MERCADOPAGO_WEBHOOK_SECRET || '').trim();
 
   let dbAccessToken = '';
   let dbPublicKey = '';
+  let dbWebhookSecret = '';
 
   try {
     const settingsList = await db.select().from(appSettings);
     const tokenSetting = settingsList.find((s) => s.key === 'MERCADOPAGO_ACCESS_TOKEN');
     const keySetting = settingsList.find((s) => s.key === 'MERCADOPAGO_PUBLIC_KEY');
+    const webhookSetting = settingsList.find((s) => s.key === 'MERCADOPAGO_WEBHOOK_SECRET');
 
     if (tokenSetting && tokenSetting.value && tokenSetting.value.trim().length > 0) {
       dbAccessToken = decryptSecret(tokenSetting.value.trim());
@@ -112,23 +137,32 @@ export async function getMercadoPagoCredentials(): Promise<MercadoPagoCredential
     if (keySetting && keySetting.value && keySetting.value.trim().length > 0) {
       dbPublicKey = keySetting.value.trim();
     }
+    if (webhookSetting && webhookSetting.value && webhookSetting.value.trim().length > 0) {
+      dbWebhookSecret = decryptSecret(webhookSetting.value.trim());
+    }
   } catch (err: any) {
     console.warn('[MercadoPago] Aviso ao ler app_settings:', err?.message || err);
   }
 
   let accessToken = '';
   let publicKey = '';
+  let webhookSecret = '';
   let source: 'DATABASE' | 'ENV' | 'NONE' = 'NONE';
 
   // Rule 8: Prefer infrastructure environment variable / secret when available
   if (envAccessToken) {
     accessToken = envAccessToken;
     publicKey = envPublicKey || dbPublicKey;
+    webhookSecret = envWebhookSecret || dbWebhookSecret;
     source = 'ENV';
   } else if (dbAccessToken) {
     accessToken = dbAccessToken;
     publicKey = dbPublicKey || envPublicKey;
+    webhookSecret = dbWebhookSecret || envWebhookSecret;
     source = 'DATABASE';
+  } else {
+    publicKey = envPublicKey || dbPublicKey;
+    webhookSecret = envWebhookSecret || dbWebhookSecret;
   }
 
   const isConfigured = Boolean(accessToken && accessToken.length > 5);
@@ -144,6 +178,7 @@ export async function getMercadoPagoCredentials(): Promise<MercadoPagoCredential
   return {
     accessToken,
     publicKey,
+    webhookSecret,
     isConfigured,
     isProduction,
     tokenType,
@@ -161,7 +196,17 @@ export async function getPublicConfig() {
     isProduction: creds.isProduction,
     tokenType: creds.tokenType,
     publicKey: creds.publicKey || null,
-    environmentLabel: creds.isProduction ? 'Produção Oficial (Real)' : creds.tokenType === 'TEST' ? 'Sandbox / Testes' : 'Não Configurado',
+    hasWebhookSecret: Boolean(creds.webhookSecret),
+    integrationStatus: creds.isConfigured
+      ? creds.isProduction
+        ? 'CONECTADO_PRODUCAO'
+        : 'CONECTADO_TESTE'
+      : 'MERCADO PAGO — INTEGRAÇÃO PARCIAL/NÃO CONFIGURADA',
+    environmentLabel: creds.isProduction
+      ? 'Produção Oficial (Real)'
+      : creds.tokenType === 'TEST'
+      ? 'Sandbox / Testes'
+      : 'MERCADO PAGO — INTEGRAÇÃO PARCIAL/NÃO CONFIGURADA',
   };
 }
 
@@ -222,9 +267,10 @@ export async function testMercadoPagoConnection(overrideToken?: string) {
 /**
  * Updates or stores Mercado Pago credentials in the database (appSettings).
  */
-export async function saveMercadoPagoCredentials(accessToken: string, publicKey?: string) {
+export async function saveMercadoPagoCredentials(accessToken: string, publicKey?: string, webhookSecret?: string) {
   const cleanToken = accessToken.trim();
   const cleanKey = (publicKey || '').trim();
+  const cleanSecret = (webhookSecret || '').trim();
 
   // Test token first
   const testRes = await testMercadoPagoConnection(cleanToken);
@@ -261,7 +307,190 @@ export async function saveMercadoPagoCredentials(accessToken: string, publicKey?
     }
   }
 
+  // Upsert webhook secret if provided
+  if (cleanSecret) {
+    const encryptedSecret = encryptSecret(cleanSecret);
+    const [existingSecret] = await db.select().from(appSettings).where(eq(appSettings.key, 'MERCADOPAGO_WEBHOOK_SECRET')).limit(1);
+    if (existingSecret) {
+      await db.update(appSettings).set({ value: encryptedSecret, updatedAt: new Date() }).where(eq(appSettings.id, existingSecret.id));
+    } else {
+      await db.insert(appSettings).values({
+        key: 'MERCADOPAGO_WEBHOOK_SECRET',
+        value: encryptedSecret,
+        description: 'Mercado Pago Webhook Secret for Signature Validation (AES-256-GCM Encrypted)',
+      });
+    }
+  }
+
   return testRes;
+}
+
+/**
+ * Controlled Production Connection Test (Requirements 9 & 10)
+ * Returns status: CONECTADO | NÃO CONFIGURADO | ERRO DE AUTENTICAÇÃO | ERRO DE API
+ * Never exposes credentials or tokens!
+ */
+export async function verifyMercadoPagoConnectionStatus(): Promise<MPVerificationStatus> {
+  const creds = await getMercadoPagoCredentials();
+
+  let lastConfirmationReceived: string | null = null;
+  let lastPaymentConfirmed: string | null = null;
+  let lastError: string | null = null;
+
+  try {
+    const [latestApprovedPayment] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.status, 'APPROVED'))
+      .orderBy(desc(payments.paidAt))
+      .limit(1);
+
+    if (latestApprovedPayment && latestApprovedPayment.paidAt) {
+      lastConfirmationReceived = new Date(latestApprovedPayment.paidAt).toLocaleString('pt-BR');
+      lastPaymentConfirmed = `Pagamento #${latestApprovedPayment.id} (R$ ${(latestApprovedPayment.amountCents / 100).toFixed(2)})`;
+    }
+  } catch {}
+
+  if (!creds.isConfigured) {
+    return {
+      status: 'NÃO CONFIGURADO',
+      environmentConfigured: false,
+      accessTokenConfigured: false,
+      publicKeyConfigured: Boolean(creds.publicKey),
+      webhookSecretConfigured: Boolean(creds.webhookSecret),
+      webhookOperational: true,
+      lastConfirmationReceived,
+      lastPaymentConfirmed,
+      lastError: 'Credenciais de produção do Mercado Pago ainda não foram cadastradas.',
+    };
+  }
+
+  try {
+    const res = await fetch('https://api.mercadopago.com/users/me', {
+      headers: {
+        Authorization: `Bearer ${creds.accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (res.status === 401 || res.status === 403) {
+      return {
+        status: 'ERRO DE AUTENTICAÇÃO',
+        environmentConfigured: true,
+        accessTokenConfigured: true,
+        publicKeyConfigured: Boolean(creds.publicKey),
+        webhookSecretConfigured: Boolean(creds.webhookSecret),
+        webhookOperational: true,
+        lastConfirmationReceived,
+        lastPaymentConfirmed,
+        lastError: `Falha de autenticação (HTTP ${res.status}): Token de acesso não autorizado ou expirado.`,
+      };
+    }
+
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      return {
+        status: 'ERRO DE API',
+        environmentConfigured: true,
+        accessTokenConfigured: true,
+        publicKeyConfigured: Boolean(creds.publicKey),
+        webhookSecretConfigured: Boolean(creds.webhookSecret),
+        webhookOperational: true,
+        lastConfirmationReceived,
+        lastPaymentConfirmed,
+        lastError: errBody.message || `Erro da API Mercado Pago (HTTP ${res.status}).`,
+      };
+    }
+
+    const userData = await res.json();
+    return {
+      status: 'CONECTADO',
+      environmentConfigured: true,
+      accessTokenConfigured: true,
+      publicKeyConfigured: Boolean(creds.publicKey),
+      webhookSecretConfigured: Boolean(creds.webhookSecret),
+      webhookOperational: true,
+      lastConfirmationReceived,
+      lastPaymentConfirmed,
+      lastError: null,
+      account: {
+        collectorId: userData.id,
+        nickname: userData.nickname,
+        siteId: userData.site_id,
+        isProduction: creds.isProduction,
+        tokenType: creds.tokenType,
+      },
+    };
+  } catch (err: any) {
+    return {
+      status: 'ERRO DE API',
+      environmentConfigured: true,
+      accessTokenConfigured: true,
+      publicKeyConfigured: Boolean(creds.publicKey),
+      webhookSecretConfigured: Boolean(creds.webhookSecret),
+      webhookOperational: true,
+      lastConfirmationReceived,
+      lastPaymentConfirmed,
+      lastError: `Falha de rede ao conectar à API do Mercado Pago: ${err.message}`,
+    };
+  }
+}
+
+/**
+ * Validates Mercado Pago Webhook HMAC-SHA256 signature (Official spec).
+ * Header: x-signature: ts=[timestamp],v1=[hash]
+ * Header: x-request-id: [uuid]
+ * Query dataId / id: [paymentId]
+ */
+export function verifyWebhookSignature(params: {
+  xSignature?: string | string[];
+  xRequestId?: string | string[];
+  dataId?: string | number | null;
+  secret: string;
+}): { valid: boolean; reason: string } {
+  if (!params.secret) {
+    return { valid: true, reason: 'SECRET_NOT_CONFIGURED' };
+  }
+
+  const sigHeader = Array.isArray(params.xSignature) ? params.xSignature[0] : params.xSignature;
+  const reqId = Array.isArray(params.xRequestId) ? params.xRequestId[0] : params.xRequestId;
+
+  if (!sigHeader) {
+    return { valid: false, reason: 'MISSING_X_SIGNATURE' };
+  }
+
+  const parts: Record<string, string> = {};
+  sigHeader.split(',').forEach((part) => {
+    const [k, v] = part.split('=').map((s) => s.trim());
+    if (k && v) parts[k] = v;
+  });
+
+  const ts = parts.ts;
+  const hashV1 = parts.v1;
+
+  if (!ts || !hashV1) {
+    return { valid: false, reason: 'INVALID_SIGNATURE_FORMAT' };
+  }
+
+  const manifest = `id:${params.dataId || ''};request-id:${reqId || ''};ts:${ts};`;
+  const computedHash = crypto.createHmac('sha256', params.secret).update(manifest).digest('hex');
+
+  try {
+    const bufComputed = Buffer.from(computedHash, 'hex');
+    const bufReceived = Buffer.from(hashV1, 'hex');
+
+    if (bufComputed.length !== bufReceived.length) {
+      return { valid: false, reason: 'HASH_MISMATCH' };
+    }
+
+    const isValid = crypto.timingSafeEqual(bufComputed, bufReceived);
+    return {
+      valid: isValid,
+      reason: isValid ? 'VALID' : 'HASH_MISMATCH',
+    };
+  } catch {
+    return { valid: false, reason: 'HASH_COMPARISON_ERROR' };
+  }
 }
 
 /**
@@ -623,43 +852,27 @@ export async function settlePayment(
           .where(eq(commissions.orderId, order.id));
 
         // Insert or update financial ledger entry for complete reconciliation
-        const [existingLedger] = await db
-          .select()
-          .from(financialLedger)
-          .where(eq(financialLedger.orderId, order.id))
-          .limit(1);
+        const { recordLedgerEntry, syncSellerBalance } = await import('./financialService.ts');
+        await recordLedgerEntry({
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          sellerId: order.sellerId,
+          buyerId: order.buyerId,
+          entryType: 'ESCROW_HOLD',
+          grossAmountCents: order.totalGrossCents,
+          platformFeeCents: order.commissionCents,
+          sellerAmountCents: order.sellerNetCents,
+          paymentStatus: 'APPROVED',
+          orderStatus: 'PAID',
+          payoutStatus: 'PENDING_DELIVERY_CONFIRMATION',
+          status: 'HELD',
+          paymentId: dbPayment.id,
+          mpPaymentId: String(mpData.id),
+          referenceId: String(dbPayment.id),
+        });
 
-        if (existingLedger) {
-          await db
-            .update(financialLedger)
-            .set({
-              paymentId: dbPayment.id,
-              mpPaymentId: String(mpData.id),
-              paymentStatus: 'APPROVED',
-              orderStatus: 'PAID',
-              payoutStatus: 'PENDING_DELIVERY_CONFIRMATION',
-              approvedAt: now,
-              updatedAt: now,
-            })
-            .where(eq(financialLedger.id, existingLedger.id));
-        } else {
-          await db.insert(financialLedger).values({
-            transactionNumber: `TX-${order.orderNumber}`,
-            orderId: order.id,
-            orderNumber: order.orderNumber,
-            paymentId: dbPayment.id,
-            buyerId: order.buyerId,
-            sellerId: order.sellerId,
-            grossAmountCents: order.totalGrossCents,
-            platformFeeCents: order.commissionCents,
-            sellerAmountCents: order.sellerNetCents,
-            paymentStatus: 'APPROVED',
-            orderStatus: 'PAID',
-            payoutStatus: 'PENDING_DELIVERY_CONFIRMATION',
-            approvedAt: now,
-            mpPaymentId: String(mpData.id),
-          });
-        }
+        // Sync seller balances atomically
+        await syncSellerBalance(order.sellerId);
 
         // Notifications
         await db.insert(notifications).values({

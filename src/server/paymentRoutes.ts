@@ -12,6 +12,8 @@ import {
   createCheckoutPreference,
   getPaymentFromMercadoPago,
   settlePayment,
+  verifyWebhookSignature,
+  verifyMercadoPagoConnectionStatus,
 } from './mercadopagoService.ts';
 
 const router = Router();
@@ -350,10 +352,11 @@ router.get('/order/:orderId/status', requireAuth, async (req: AuthRequest, res) 
   }
 });
 
-// 6. MERCADO PAGO WEBHOOK (Idempotent, Production-Ready)
+// 6. MERCADO PAGO WEBHOOK (Idempotent, Production-Ready, Signature-Protected)
 // Supports both /webhook and /mercadopago/webhook
-const handleWebhook = async (req: Request, res: Response) => {
+export const handleWebhook = async (req: Request, res: Response) => {
   try {
+    const creds = await getMercadoPagoCredentials();
     const query = req.query;
     const body = req.body || {};
 
@@ -367,19 +370,44 @@ const handleWebhook = async (req: Request, res: Response) => {
       query.id ||
       (query.topic === 'payment' ? query.id : null);
 
-    const eventType = body.type || query.type || query.topic || body.action;
+    const eventType = body.type || query.type || query.topic || body.action || 'unknown';
+
+    // 1. Signature Validation (when MERCADOPAGO_WEBHOOK_SECRET is configured)
+    if (creds.webhookSecret) {
+      const xSignature = req.headers['x-signature'];
+      const xRequestId = req.headers['x-request-id'];
+
+      const sigCheck = verifyWebhookSignature({
+        xSignature: xSignature as string | string[] | undefined,
+        xRequestId: xRequestId as string | string[] | undefined,
+        dataId: paymentId,
+        secret: creds.webhookSecret,
+      });
+
+      if (!sigCheck.valid) {
+        console.warn(`[MercadoPago Webhook] Rejeitado por assinatura inválida: ${sigCheck.reason}`);
+        await db.insert(auditLogs).values({
+          action: 'WEBHOOK_INVALID_SIGNATURE',
+          entityType: 'PAYMENT',
+          entityId: String(paymentId || 'UNKNOWN'),
+          details: JSON.stringify({ reason: sigCheck.reason, ip: req.ip }),
+        });
+        return res.status(401).json({ error: 'Assinatura do webhook inválida.' });
+      }
+    }
 
     console.log(`[MercadoPago Webhook] Evento recebido: type=${eventType}, id=${paymentId}`);
 
-    if (!paymentId) {
-      // Not a payment event or test ping (e.g. subscription_preapproval or ping)
-      return res.status(200).send('Webhook acknowledged (no payment id)');
+    // If not a payment event or unknown topic: safely acknowledge without breaking!
+    if (!paymentId || (eventType !== 'payment' && eventType !== 'payment.created' && eventType !== 'payment.updated')) {
+      console.log(`[MercadoPago Webhook] Evento não relacionado a pagamento direto (${eventType}). Acknowledged com segurança.`);
+      return res.status(200).send('Webhook acknowledged (non-payment event)');
     }
 
-    // Fetch live payment details from Mercado Pago API using Access Token
+    // 2. Fetch live payment details from Mercado Pago API using Access Token
     const mpData = await getPaymentFromMercadoPago(paymentId);
     if (!mpData) {
-      console.warn(`[MercadoPago Webhook] Pagamento #${paymentId} não retornado pela API.`);
+      console.warn(`[MercadoPago Webhook] Pagamento #${paymentId} não retornado pela API oficial.`);
       return res.status(200).send('Payment not found on MP');
     }
 
@@ -388,7 +416,7 @@ const handleWebhook = async (req: Request, res: Response) => {
       `[MercadoPago Webhook] Pagamento #${paymentId}: status=${mpData.status}, detail=${mpData.status_detail}, external_ref=${externalRef}`
     );
 
-    // Locate payment record in database by external reference or mp_payment_id
+    // 3. Locate payment record in database by external reference or mp_payment_id
     let paymentRecord: typeof payments.$inferSelect | undefined;
 
     if (externalRef) {
@@ -406,7 +434,7 @@ const handleWebhook = async (req: Request, res: Response) => {
       return res.status(200).send('Local payment record not found');
     }
 
-    // Centralized idempotent settlement
+    // 4. Centralized idempotent settlement
     const settlement = await settlePayment(paymentRecord, mpData);
     console.log(`[MercadoPago Webhook] Liquidação concluída:`, settlement);
 
@@ -421,6 +449,26 @@ const handleWebhook = async (req: Request, res: Response) => {
 router.post('/webhook', handleWebhook);
 router.post('/mercadopago/webhook', handleWebhook);
 router.get('/mercadopago/webhook', (req, res) => res.status(200).send('Mercado Pago Webhook Endpoint Active'));
+
+// 7. MERCADO PAGO CONTROLLED CONNECTION TEST (Requirements 9 & 10)
+router.all('/mercadopago/verify-connection', requireMasterOwner, async (_req: AuthRequest, res: Response) => {
+  try {
+    const status = await verifyMercadoPagoConnectionStatus();
+    return res.json(status);
+  } catch (err: any) {
+    return res.status(500).json({
+      status: 'ERRO DE API',
+      environmentConfigured: false,
+      accessTokenConfigured: false,
+      publicKeyConfigured: false,
+      webhookSecretConfigured: false,
+      webhookOperational: true,
+      lastConfirmationReceived: null,
+      lastPaymentConfirmed: null,
+      lastError: err.message,
+    });
+  }
+});
 
 // 7. MERCADO PAGO HEALTH DIAGNOSTIC (Master Owner only)
 router.get('/mercadopago/health', requireMasterOwner, async (req: AuthRequest, res) => {

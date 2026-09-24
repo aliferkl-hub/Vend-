@@ -157,46 +157,17 @@ router.post('/account', requireAuth, async (req: AuthRequest, res: Response) => 
 router.get('/wallet', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const user = req.user!;
+    const { syncSellerBalance } = await import('./financialService.ts');
 
-    // 1. Fetch payout account
+    // 1. Sync & compute atomic balances from database
+    const balance = await syncSellerBalance(user.id);
+
+    // 2. Fetch payout account
     const [payoutAccount] = await db
       .select()
       .from(sellerPayoutAccounts)
       .where(eq(sellerPayoutAccounts.sellerId, user.id))
       .limit(1);
-
-    // 2. Fetch all orders for this seller
-    const sellerOrders = await db
-      .select()
-      .from(orders)
-      .where(eq(orders.sellerId, user.id))
-      .orderBy(desc(orders.createdAt));
-
-    let pendingBalanceCents = 0;
-    let availableBalanceCents = 0;
-    let totalCommissionsCents = 0;
-    let totalGrossSalesCents = 0;
-
-    for (const order of sellerOrders) {
-      // Must have approved payment
-      const isPaid = order.paymentStatus === 'APPROVED' || order.status !== 'AWAITING_PAYMENT' && order.status !== 'CANCELLED';
-      if (!isPaid) continue;
-
-      totalGrossSalesCents += order.totalGrossCents;
-      totalCommissionsCents += order.commissionCents;
-
-      // Pending delivery confirmation: order paid, but NOT delivered yet
-      if (order.status !== 'DELIVERED') {
-        if (order.payoutStatus === 'PENDING' || order.payoutStatus === 'PENDING_DELIVERY_CONFIRMATION') {
-          pendingBalanceCents += order.sellerNetCents;
-        }
-      } else {
-        // Delivered: check payout state
-        if (order.payoutStatus === 'RELEASED' || order.payoutStatus === 'AVAILABLE_FOR_PAYOUT') {
-          availableBalanceCents += order.sellerNetCents;
-        }
-      }
-    }
 
     // 3. Fetch payout requests
     const requests = await db
@@ -205,13 +176,11 @@ router.get('/wallet', requireAuth, async (req: AuthRequest, res: Response) => {
       .where(eq(payoutRequests.sellerId, user.id))
       .orderBy(desc(payoutRequests.requestedAt));
 
-    let totalPaidOutCents = 0;
     let pendingPayoutsCount = 0;
     let completedPayoutsCount = 0;
 
     for (const r of requests) {
       if (r.status === 'PAID') {
-        totalPaidOutCents += r.netAmountCents;
         completedPayoutsCount++;
       } else if (r.status === 'REQUESTED' || r.status === 'PROCESSING') {
         pendingPayoutsCount++;
@@ -227,11 +196,11 @@ router.get('/wallet', requireAuth, async (req: AuthRequest, res: Response) => {
       .limit(30);
 
     return res.json({
-      pendingBalanceCents,
-      availableBalanceCents,
-      totalPaidOutCents,
-      totalCommissionsCents,
-      totalGrossSalesCents,
+      pendingBalanceCents: balance.pendingBalanceCents,
+      availableBalanceCents: balance.availableBalanceCents,
+      paidBalanceCents: balance.paidBalanceCents,
+      platformRevenueCents: balance.platformRevenueCents,
+      totalGrossSalesCents: balance.totalGrossSalesCents,
       pendingPayoutsCount,
       completedPayoutsCount,
       payoutAccount: payoutAccount || null,
@@ -245,127 +214,153 @@ router.get('/wallet', requireAuth, async (req: AuthRequest, res: Response) => {
 });
 
 // ==========================================
-// 4. SELLER REQUESTS PAYOUT OF AVAILABLE FUNDS
+// 4. SELLER REQUESTS PAYOUT OF AVAILABLE FUNDS (IDEMPOTENT & LOCK PROTECTED)
 // ==========================================
 router.post('/request', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const user = req.user!;
+    const { withLock, recordLedgerEntry, syncSellerBalance } = await import('./financialService.ts');
 
-    // 1. Verify configured payout account
-    const [account] = await db
-      .select()
-      .from(sellerPayoutAccounts)
-      .where(eq(sellerPayoutAccounts.sellerId, user.id))
-      .limit(1);
+    return await withLock(`payout_request_${user.id}`, async () => {
+      // 1. Verify configured payout account
+      const [account] = await db
+        .select()
+        .from(sellerPayoutAccounts)
+        .where(eq(sellerPayoutAccounts.sellerId, user.id))
+        .limit(1);
 
-    if (!account || account.status !== 'ACTIVE') {
-      return res.status(400).json({
-        error: 'Você precisa configurar uma conta de recebimento (Chave Pix ou Conta Bancária) antes de solicitar o repasse.',
+      if (!account || account.status !== 'ACTIVE') {
+        return res.status(400).json({
+          error: 'Você precisa configurar uma conta de recebimento (Chave Pix ou Conta Bancária) antes de solicitar o repasse.',
+        });
+      }
+
+      // 2. Find eligible delivered orders with available payout
+      const eligibleOrders = await db
+        .select()
+        .from(orders)
+        .where(
+          and(
+            eq(orders.sellerId, user.id),
+            eq(orders.status, 'DELIVERED'),
+            sql`${orders.payoutStatus} IN ('RELEASED', 'AVAILABLE_FOR_PAYOUT')`
+          )
+        );
+
+      if (eligibleOrders.length === 0) {
+        return res.status(400).json({
+          error: 'Nenhum valor disponível para repasse no momento. O saldo só fica disponível após o comprador confirmar a entrega com o código de 4 dígitos.',
+        });
+      }
+
+      const totalAvailableCents = eligibleOrders.reduce((sum, o) => sum + o.sellerNetCents, 0);
+      if (totalAvailableCents <= 0) {
+        return res.status(400).json({ error: 'Valor disponível para repasse é zero.' });
+      }
+
+      const orderIds = eligibleOrders.map((o) => o.id);
+      const requestNumber = `PAY-${Date.now().toString(36).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
+      const now = new Date();
+
+      // Account snapshot
+      const receiptSnapshot = JSON.stringify({
+        accountType: account.accountType,
+        pixKeyType: account.pixKeyType,
+        pixKey: account.pixKey,
+        bankName: account.bankName,
+        agency: account.agency,
+        accountNumber: account.accountNumber,
+        holderName: account.holderName,
+        holderDocument: account.holderDocument,
       });
-    }
 
-    // 2. Find eligible delivered orders with available payout
-    const eligibleOrders = await db
-      .select()
-      .from(orders)
-      .where(
-        and(
-          eq(orders.sellerId, user.id),
-          eq(orders.status, 'DELIVERED'),
-          sql`${orders.payoutStatus} IN ('RELEASED', 'AVAILABLE_FOR_PAYOUT')`
-        )
-      );
+      // Create payout request
+      const [payoutRequest] = await db
+        .insert(payoutRequests)
+        .values({
+          requestNumber,
+          sellerId: user.id,
+          payoutAccountId: account.id,
+          amountCents: totalAvailableCents,
+          feeCents: 0,
+          netAmountCents: totalAvailableCents,
+          status: 'REQUESTED',
+          receiptSnapshot,
+          orderIds: JSON.stringify(orderIds),
+          requestedAt: now,
+        })
+        .returning();
 
-    if (eligibleOrders.length === 0) {
-      return res.status(400).json({
-        error: 'Nenhum valor disponível para repasse no momento. O saldo só fica disponível após o comprador confirmar a entrega com o código de 4 dígitos.',
-      });
-    }
+      // Atomically transition orders to REQUESTED
+      await db
+        .update(orders)
+        .set({
+          payoutStatus: 'REQUESTED',
+          payoutRequestedAt: now,
+          updatedAt: now,
+        })
+        .where(inArray(orders.id, orderIds));
 
-    const totalAvailableCents = eligibleOrders.reduce((sum, o) => sum + o.sellerNetCents, 0);
-    if (totalAvailableCents <= 0) {
-      return res.status(400).json({ error: 'Valor disponível para repasse é zero.' });
-    }
+      // Record PAYOUT_REQUEST in ledger for each order
+      for (const ord of eligibleOrders) {
+        await recordLedgerEntry({
+          orderId: ord.id,
+          orderNumber: ord.orderNumber,
+          sellerId: ord.sellerId,
+          buyerId: ord.buyerId,
+          entryType: 'PAYOUT_REQUEST',
+          grossAmountCents: ord.totalGrossCents,
+          platformFeeCents: ord.commissionCents,
+          sellerAmountCents: ord.sellerNetCents,
+          paymentStatus: ord.paymentStatus,
+          orderStatus: ord.status,
+          payoutStatus: 'REQUESTED',
+          status: 'PENDING',
+          payoutRequestId: payoutRequest.id,
+          referenceId: requestNumber,
+        });
+      }
 
-    const orderIds = eligibleOrders.map((o) => o.id);
-    const requestNumber = `PAY-${Date.now().toString(36).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
-    const now = new Date();
+      // Update financial ledger
+      await db
+        .update(financialLedger)
+        .set({
+          payoutStatus: 'REQUESTED',
+          payoutRequestedAt: now,
+          payoutRequestId: payoutRequest.id,
+          updatedAt: now,
+        })
+        .where(inArray(financialLedger.orderId, orderIds));
 
-    // Account snapshot
-    const receiptSnapshot = JSON.stringify({
-      accountType: account.accountType,
-      pixKeyType: account.pixKeyType,
-      pixKey: account.pixKey,
-      bankName: account.bankName,
-      agency: account.agency,
-      accountNumber: account.accountNumber,
-      holderName: account.holderName,
-      holderDocument: account.holderDocument,
-    });
+      // Sync seller balances: Available decreases immediately, preventing dual withdrawals
+      await syncSellerBalance(user.id);
 
-    // Create payout request
-    const [payoutRequest] = await db
-      .insert(payoutRequests)
-      .values({
-        requestNumber,
-        sellerId: user.id,
-        payoutAccountId: account.id,
-        amountCents: totalAvailableCents,
-        feeCents: 0,
-        netAmountCents: totalAvailableCents,
-        status: 'REQUESTED',
-        receiptSnapshot,
-        orderIds: JSON.stringify(orderIds),
-        requestedAt: now,
-      })
-      .returning();
-
-    // Atomically transition orders to REQUESTED
-    await db
-      .update(orders)
-      .set({
-        payoutStatus: 'REQUESTED',
-        payoutRequestedAt: now,
-        updatedAt: now,
-      })
-      .where(inArray(orders.id, orderIds));
-
-    // Update financial ledger
-    await db
-      .update(financialLedger)
-      .set({
-        payoutStatus: 'REQUESTED',
-        payoutRequestedAt: now,
-        payoutRequestId: payoutRequest.id,
-        updatedAt: now,
-      })
-      .where(inArray(financialLedger.orderId, orderIds));
-
-    // Notify seller
-    await db.insert(notifications).values({
-      userId: user.id,
-      title: 'Solicitação de Repasse Criada',
-      message: `Sua solicitação de repasse ${requestNumber} de ${(totalAvailableCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} foi registrada e enviada para processamento.`,
-      type: 'SYSTEM',
-      link: '/painel/vendedor',
-    });
-
-    // Notify Master Owners
-    const owners = await db.select().from(users).where(eq(users.role, 'MASTER_OWNER'));
-    for (const owner of owners) {
+      // Notify seller
       await db.insert(notifications).values({
-        userId: owner.id,
-        title: 'Nova Solicitação de Repasse',
-        message: `Vendedor ${user.name} solicitou repasse de ${(totalAvailableCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} (${requestNumber}).`,
+        userId: user.id,
+        title: 'Solicitação de Repasse Criada',
+        message: `Sua solicitação de repasse ${requestNumber} de ${(totalAvailableCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} foi registrada e enviada para processamento.`,
         type: 'SYSTEM',
-        link: '/admin',
+        link: '/painel/vendedor',
       });
-    }
 
-    return res.json({
-      success: true,
-      message: 'Solicitação de repasse registrada com sucesso!',
-      payoutRequest,
+      // Notify Master Owners
+      const owners = await db.select().from(users).where(eq(users.role, 'MASTER_OWNER'));
+      for (const owner of owners) {
+        await db.insert(notifications).values({
+          userId: owner.id,
+          title: 'Nova Solicitação de Repasse',
+          message: `Vendedor ${user.name} solicitou repasse de ${(totalAvailableCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} (${requestNumber}).`,
+          type: 'SYSTEM',
+          link: '/admin',
+        });
+      }
+
+      return res.json({
+        success: true,
+        message: 'Solicitação de repasse registrada com sucesso!',
+        payoutRequest,
+      });
     });
   } catch (err: any) {
     console.error('Error creating payout request:', err);
@@ -380,7 +375,6 @@ router.get('/admin/overview', requireMasterOwner, async (_req: AuthRequest, res:
   try {
     // 1. Total statistics
     const allOrders = await db.select().from(orders).orderBy(desc(orders.createdAt));
-    const allPayments = await db.select().from(payments).orderBy(desc(payments.createdAt));
     const allRequests = await db.select().from(payoutRequests).orderBy(desc(payoutRequests.requestedAt));
     const ledger = await db.select().from(financialLedger).orderBy(desc(financialLedger.createdAt)).limit(100);
 
@@ -423,7 +417,7 @@ router.get('/admin/overview', requireMasterOwner, async (_req: AuthRequest, res:
     return res.json({
       metrics: {
         totalOrdersCount: allOrders.length,
-        totalPaymentsCount: allPayments.length,
+        totalPaymentsCount: allOrders.filter((o) => o.paymentStatus === 'APPROVED').length,
         totalGrossCents,
         totalPlatformCommissionsCents,
         pendingDeliveryCents,
@@ -441,12 +435,96 @@ router.get('/admin/overview', requireMasterOwner, async (_req: AuthRequest, res:
   }
 });
 
-// Process/Complete Payout by Master Owner
+// Reconciliação Financeira Executiva (Requirement 10 & 11)
+router.get('/admin/reconciliation', requireMasterOwner, async (_req: AuthRequest, res: Response) => {
+  try {
+    const { runFinancialReconciliation } = await import('./financialService.ts');
+    const report = await runFinancialReconciliation();
+    return res.json(report);
+  } catch (err: any) {
+    console.error('Error running financial reconciliation:', err);
+    return res.status(500).json({ error: 'Erro ao executar conciliação financeira.' });
+  }
+});
+
+// 1. Move Payout Request to PROCESSING
+router.post('/admin/payouts/:id/process', requireMasterOwner, async (req: AuthRequest, res: Response) => {
+  try {
+    const admin = req.user!;
+    const requestId = parseInt(req.params.id);
+    const { recordLedgerEntry } = await import('./financialService.ts');
+
+    const [request] = await db
+      .select()
+      .from(payoutRequests)
+      .where(eq(payoutRequests.id, requestId))
+      .limit(1);
+
+    if (!request) {
+      return res.status(404).json({ error: 'Solicitação de repasse não encontrada.' });
+    }
+
+    if (request.status === 'PAID') {
+      return res.status(400).json({ error: 'Esta solicitação já foi paga.' });
+    }
+
+    const now = new Date();
+    const [updated] = await db
+      .update(payoutRequests)
+      .set({
+        status: 'PROCESSING',
+        processedByUserId: admin.id,
+        processedAt: now,
+        updatedAt: now,
+      })
+      .where(eq(payoutRequests.id, requestId))
+      .returning();
+
+    // Parse orders and record ledger entries
+    let orderIds: number[] = [];
+    try {
+      if (request.orderIds) orderIds = JSON.parse(request.orderIds);
+    } catch {}
+
+    if (orderIds.length > 0) {
+      const linkedOrders = await db.select().from(orders).where(inArray(orders.id, orderIds));
+      for (const ord of linkedOrders) {
+        await recordLedgerEntry({
+          orderId: ord.id,
+          orderNumber: ord.orderNumber,
+          sellerId: ord.sellerId,
+          buyerId: ord.buyerId,
+          entryType: 'PAYOUT_PROCESSING',
+          grossAmountCents: ord.totalGrossCents,
+          platformFeeCents: ord.commissionCents,
+          sellerAmountCents: ord.sellerNetCents,
+          paymentStatus: ord.paymentStatus,
+          orderStatus: ord.status,
+          payoutStatus: 'PROCESSING',
+          payoutRequestId: request.id,
+          referenceId: request.requestNumber,
+        });
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: 'Repasse colocado em processamento bancário.',
+      payoutRequest: updated,
+    });
+  } catch (err: any) {
+    console.error('Error setting payout to processing:', err);
+    return res.status(500).json({ error: 'Erro ao processar repasse.' });
+  }
+});
+
+// 2. Process/Complete Payout by Master Owner (Requirement 9)
 router.post('/admin/payouts/:id/complete', requireMasterOwner, async (req: AuthRequest, res: Response) => {
   try {
     const admin = req.user!;
     const requestId = parseInt(req.params.id);
-    const { paymentProofUrl, notes } = req.body;
+    const { paymentProofUrl, notes, isManualTransfer, externalTxId } = req.body;
+    const { recordLedgerEntry, syncSellerBalance } = await import('./financialService.ts');
 
     const [request] = await db
       .select()
@@ -462,7 +540,23 @@ router.post('/admin/payouts/:id/complete', requireMasterOwner, async (req: AuthR
       return res.status(400).json({ error: 'Esta solicitação já foi marcada como Paga.' });
     }
 
+    // Direct Payout API check:
+    // If no automated banking API is connected, don't pretend a real automatic API transferred money.
+    // Require external proof or manual reference from the Master Owner.
+    const hasAutomatedApi = Boolean(process.env.AUTOMATED_PIX_PAYOUT_API_KEY);
+    if (!hasAutomatedApi && !paymentProofUrl && !externalTxId && !isManualTransfer) {
+      return res.status(400).json({
+        error: 'Transferência financeira externa ainda não configurada.',
+        payoutStatus: 'AWAITING_PROCESSOR',
+        requiresManualProof: true,
+        message: 'A API de transferência bancária direta não está configurada neste ambiente. Para registrar a baixa, anexe o comprovante Pix ou o ID da transação bancária realizada manualmente.',
+      });
+    }
+
     const now = new Date();
+    const settlementNotes = hasAutomatedApi
+      ? `Transferência automática realizada via API bancária. Ref: ${externalTxId || 'AUTO'}`
+      : `Liquidação manual registrada pelo Master Owner com comprovante externo. Ref: ${externalTxId || 'MANUAL-PIX'} | Notas: ${notes || 'Sem observações'}`;
 
     // 1. Update payout request
     const [updatedRequest] = await db
@@ -471,8 +565,8 @@ router.post('/admin/payouts/:id/complete', requireMasterOwner, async (req: AuthR
         status: 'PAID',
         processedByUserId: admin.id,
         paymentProofUrl: paymentProofUrl || null,
-        notes: notes || null,
-        processedAt: now,
+        notes: settlementNotes,
+        processedAt: request.processedAt || now,
         paidAt: now,
         updatedAt: now,
       })
@@ -505,7 +599,36 @@ router.post('/admin/payouts/:id/complete', requireMasterOwner, async (req: AuthR
           updatedAt: now,
         })
         .where(inArray(financialLedger.orderId, orderIds));
+
+      // Record PAYOUT_COMPLETED in ledger
+      const linkedOrders = await db.select().from(orders).where(inArray(orders.id, orderIds));
+      for (const ord of linkedOrders) {
+        await recordLedgerEntry({
+          orderId: ord.id,
+          orderNumber: ord.orderNumber,
+          sellerId: ord.sellerId,
+          buyerId: ord.buyerId,
+          entryType: 'PAYOUT_COMPLETED',
+          grossAmountCents: ord.totalGrossCents,
+          platformFeeCents: ord.commissionCents,
+          sellerAmountCents: ord.sellerNetCents,
+          paymentStatus: ord.paymentStatus,
+          orderStatus: ord.status,
+          payoutStatus: 'PAID',
+          status: 'COMPLETED',
+          payoutRequestId: request.id,
+          referenceId: externalTxId || request.requestNumber,
+          metadata: {
+            isAutomated: hasAutomatedApi,
+            settledByAdminId: admin.id,
+            proofUrl: paymentProofUrl || null,
+          },
+        });
+      }
     }
+
+    // Atomic seller balance sync: paid increases, available drops
+    await syncSellerBalance(request.sellerId);
 
     // 3. Notify seller
     await db.insert(notifications).values({
@@ -527,6 +650,8 @@ router.post('/admin/payouts/:id/complete', requireMasterOwner, async (req: AuthR
         sellerId: request.sellerId,
         amountCents: request.netAmountCents,
         proof: paymentProofUrl,
+        externalTxId,
+        hasAutomatedApi,
       }),
     });
 
@@ -538,6 +663,112 @@ router.post('/admin/payouts/:id/complete', requireMasterOwner, async (req: AuthR
   } catch (err: any) {
     console.error('Error completing payout:', err);
     return res.status(500).json({ error: 'Erro ao processar repasse.' });
+  }
+});
+
+// 3. Fail/Rollback Payout Request (Requirement 7)
+router.post('/admin/payouts/:id/fail', requireMasterOwner, async (req: AuthRequest, res: Response) => {
+  try {
+    const admin = req.user!;
+    const requestId = parseInt(req.params.id);
+    const { reason } = req.body;
+    const { recordLedgerEntry, syncSellerBalance } = await import('./financialService.ts');
+
+    const [request] = await db
+      .select()
+      .from(payoutRequests)
+      .where(eq(payoutRequests.id, requestId))
+      .limit(1);
+
+    if (!request) {
+      return res.status(404).json({ error: 'Solicitação de repasse não encontrada.' });
+    }
+
+    if (request.status === 'PAID') {
+      return res.status(400).json({ error: 'Não é possível cancelar um repasse já liquidado.' });
+    }
+
+    const now = new Date();
+
+    // 1. Mark request as FAILED
+    const [updatedRequest] = await db
+      .update(payoutRequests)
+      .set({
+        status: 'FAILED',
+        notes: `Falha no repasse: ${reason || 'Dados bancários rejeitados pelo banco de destino ou erro na compensação.'}`,
+        processedByUserId: admin.id,
+        updatedAt: now,
+      })
+      .where(eq(payoutRequests.id, requestId))
+      .returning();
+
+    // 2. Revert orders back to AVAILABLE_FOR_PAYOUT
+    let orderIds: number[] = [];
+    try {
+      if (request.orderIds) {
+        orderIds = JSON.parse(request.orderIds);
+      }
+    } catch {}
+
+    if (orderIds.length > 0) {
+      await db
+        .update(orders)
+        .set({
+          payoutStatus: 'AVAILABLE_FOR_PAYOUT',
+          updatedAt: now,
+        })
+        .where(inArray(orders.id, orderIds));
+
+      await db
+        .update(financialLedger)
+        .set({
+          payoutStatus: 'AVAILABLE_FOR_PAYOUT',
+          updatedAt: now,
+        })
+        .where(inArray(financialLedger.orderId, orderIds));
+
+      const linkedOrders = await db.select().from(orders).where(inArray(orders.id, orderIds));
+      for (const ord of linkedOrders) {
+        await recordLedgerEntry({
+          orderId: ord.id,
+          orderNumber: ord.orderNumber,
+          sellerId: ord.sellerId,
+          buyerId: ord.buyerId,
+          entryType: 'PAYOUT_FAILED',
+          grossAmountCents: ord.totalGrossCents,
+          platformFeeCents: ord.commissionCents,
+          sellerAmountCents: ord.sellerNetCents,
+          paymentStatus: ord.paymentStatus,
+          orderStatus: ord.status,
+          payoutStatus: 'AVAILABLE_FOR_PAYOUT',
+          status: 'FAILED',
+          payoutRequestId: request.id,
+          referenceId: request.requestNumber,
+          metadata: { reason },
+        });
+      }
+    }
+
+    // Re-sync seller balances: money returns safely to available balance
+    await syncSellerBalance(request.sellerId);
+
+    // Notify seller
+    await db.insert(notifications).values({
+      userId: request.sellerId,
+      title: 'Atenção: Falha na Transferência do Repasse',
+      message: `A solicitação de repasse ${request.requestNumber} falhou (${reason || 'Dados bancários incorretos'}). O valor retornou ao seu Saldo Disponível.`,
+      type: 'SYSTEM',
+      link: '/painel/vendedor',
+    });
+
+    return res.json({
+      success: true,
+      message: 'Repasse estornado com sucesso. Saldo retornado ao vendedor.',
+      payoutRequest: updatedRequest,
+    });
+  } catch (err: any) {
+    console.error('Error failing payout:', err);
+    return res.status(500).json({ error: 'Erro ao estornar repasse.' });
   }
 });
 

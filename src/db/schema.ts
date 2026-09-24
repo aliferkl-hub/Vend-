@@ -490,12 +490,16 @@ export const financialLedger = pgTable('financial_ledger', {
   paymentId: integer('payment_id').references(() => payments.id),
   buyerId: integer('buyer_id').references(() => users.id).notNull(),
   sellerId: integer('seller_id').references(() => users.id).notNull(),
+  entryType: text('entry_type').notNull().default('SALE'), // 'SALE' | 'PLATFORM_FEE' | 'ESCROW_HOLD' | 'ESCROW_RELEASE' | 'PAYOUT_REQUEST' | 'PAYOUT_PROCESSING' | 'PAYOUT_COMPLETED' | 'PAYOUT_FAILED' | 'REFUND' | 'REVERSAL'
   grossAmountCents: integer('gross_amount_cents').notNull(),
   platformFeeCents: integer('platform_fee_cents').notNull(),
   sellerAmountCents: integer('seller_amount_cents').notNull(),
   paymentStatus: text('payment_status').notNull().default('PENDING'), // 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'REFUNDED'
-  orderStatus: text('order_status').notNull().default('AWAITING_PAYMENT'), // 'AWAITING_PAYMENT' | 'PAID' | 'PREPARING' | 'IN_TRANSIT' | 'WAITING_CONFIRMATION' | 'DELIVERED' | 'CANCELLED'
+  orderStatus: text('order_status').notNull().default('AWAITING_PAYMENT'), // 'AWAITING_PAYMENT' | 'PAID' | 'PREPARING' | 'IN_TRANSIT' | 'WAITING_CONFIRMATION' | 'DELIVERED' | 'RECEBIMENTO_VALIDADO' | 'CANCELLED'
   payoutStatus: text('payout_status').notNull().default('PENDING_DELIVERY_CONFIRMATION'), // 'PENDING_DELIVERY_CONFIRMATION' | 'AVAILABLE_FOR_PAYOUT' | 'REQUESTED' | 'PAID' | 'CANCELLED' | 'REFUNDED'
+  status: text('status').notNull().default('COMPLETED'), // 'PENDING' | 'HELD' | 'RELEASED' | 'COMPLETED' | 'FAILED'
+  referenceId: text('reference_id'),
+  metadata: text('metadata'),
   approvedAt: timestamp('approved_at'),
   deliveryConfirmedAt: timestamp('delivery_confirmed_at'),
   payoutRequestedAt: timestamp('payout_requested_at'),
@@ -504,6 +508,19 @@ export const financialLedger = pgTable('financial_ledger', {
   mpPaymentId: text('mp_payment_id'),
   cancellationReason: text('cancellation_reason'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// 30. SELLER_BALANCES (ATOMIC LEDGER-SYNCED BALANCES)
+export const sellerBalances = pgTable('seller_balances', {
+  id: serial('id').primaryKey(),
+  sellerId: integer('seller_id').references(() => users.id, { onDelete: 'cascade' }).notNull().unique(),
+  pendingBalanceCents: integer('pending_balance_cents').default(0).notNull(),
+  availableBalanceCents: integer('available_balance_cents').default(0).notNull(),
+  paidBalanceCents: integer('paid_balance_cents').default(0).notNull(),
+  platformRevenueCents: integer('platform_revenue_cents').default(0).notNull(),
+  totalGrossSalesCents: integer('total_gross_sales_cents').default(0).notNull(),
+  lastSyncedAt: timestamp('last_synced_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 

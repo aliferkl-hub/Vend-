@@ -47,6 +47,7 @@ const TABLE_RESTORE_ORDER = [
   'seller_payout_accounts',
   'payout_requests',
   'financial_ledger',
+  'seller_balances',
 ];
 
 const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
@@ -119,6 +120,15 @@ export class MemoryPool {
       'ALTER TABLE commissions ADD COLUMN IF NOT EXISTS mp_payment_id text;',
       'ALTER TABLE commissions ADD COLUMN IF NOT EXISTS paid_at timestamp;',
       'ALTER TABLE commissions ADD COLUMN IF NOT EXISTS delivered_at timestamp;',
+      'ALTER TABLE payments ADD COLUMN IF NOT EXISTS user_id integer;',
+      'ALTER TABLE payments ADD COLUMN IF NOT EXISTS status_detail text;',
+      'ALTER TABLE payments ADD COLUMN IF NOT EXISTS currency text DEFAULT \'BRL\';',
+      'ALTER TABLE payments ADD COLUMN IF NOT EXISTS qr_code text;',
+      'ALTER TABLE payments ADD COLUMN IF NOT EXISTS qr_code_base64 text;',
+      'ALTER TABLE payments ADD COLUMN IF NOT EXISTS ticket_url text;',
+      'ALTER TABLE payments ADD COLUMN IF NOT EXISTS idempotency_key text;',
+      'ALTER TABLE payments ADD COLUMN IF NOT EXISTS date_approved timestamp;',
+      'ALTER TABLE payments ADD COLUMN IF NOT EXISTS updated_at timestamp DEFAULT now();',
       `CREATE TABLE IF NOT EXISTS seller_payout_accounts (
         id serial PRIMARY KEY NOT NULL,
         seller_id integer NOT NULL,
@@ -166,12 +176,16 @@ export class MemoryPool {
         payment_id integer,
         buyer_id integer NOT NULL,
         seller_id integer NOT NULL,
+        entry_type text DEFAULT 'SALE' NOT NULL,
         gross_amount_cents integer NOT NULL,
         platform_fee_cents integer NOT NULL,
         seller_amount_cents integer NOT NULL,
         payment_status text DEFAULT 'PENDING' NOT NULL,
         order_status text DEFAULT 'AWAITING_PAYMENT' NOT NULL,
         payout_status text DEFAULT 'PENDING_DELIVERY_CONFIRMATION' NOT NULL,
+        status text DEFAULT 'COMPLETED' NOT NULL,
+        reference_id text,
+        metadata text,
         approved_at timestamp,
         delivery_confirmed_at timestamp,
         payout_requested_at timestamp,
@@ -180,6 +194,21 @@ export class MemoryPool {
         mp_payment_id text,
         cancellation_reason text,
         created_at timestamp DEFAULT now() NOT NULL,
+        updated_at timestamp DEFAULT now() NOT NULL
+      );`,
+      'ALTER TABLE financial_ledger ADD COLUMN IF NOT EXISTS entry_type text DEFAULT \'SALE\' NOT NULL;',
+      'ALTER TABLE financial_ledger ADD COLUMN IF NOT EXISTS status text DEFAULT \'COMPLETED\' NOT NULL;',
+      'ALTER TABLE financial_ledger ADD COLUMN IF NOT EXISTS reference_id text;',
+      'ALTER TABLE financial_ledger ADD COLUMN IF NOT EXISTS metadata text;',
+      `CREATE TABLE IF NOT EXISTS seller_balances (
+        id serial PRIMARY KEY NOT NULL,
+        seller_id integer NOT NULL UNIQUE,
+        pending_balance_cents integer DEFAULT 0 NOT NULL,
+        available_balance_cents integer DEFAULT 0 NOT NULL,
+        paid_balance_cents integer DEFAULT 0 NOT NULL,
+        platform_revenue_cents integer DEFAULT 0 NOT NULL,
+        total_gross_sales_cents integer DEFAULT 0 NOT NULL,
+        last_synced_at timestamp DEFAULT now() NOT NULL,
         updated_at timestamp DEFAULT now() NOT NULL
       );`,
       `CREATE TABLE IF NOT EXISTS password_resets (

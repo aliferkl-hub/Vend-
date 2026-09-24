@@ -534,13 +534,17 @@ router.get('/payments/mercadopago/health', requireMasterOwner, async (req: AuthR
 // 13. UPDATE MERCADO PAGO CREDENTIALS IN APP_SETTINGS
 router.post('/payments/mercadopago/config', requireMasterOwner, async (req: AuthRequest, res) => {
   try {
-    const { accessToken, publicKey } = req.body;
+    const { accessToken, publicKey, webhookSecret } = req.body;
     if (!accessToken || typeof accessToken !== 'string' || accessToken.trim().length < 10) {
       return res.status(400).json({ error: 'Token de acesso do Mercado Pago inválido ou muito curto.' });
     }
 
     const { saveMercadoPagoCredentials } = await import('./mercadopagoService.ts');
-    const result = await saveMercadoPagoCredentials(accessToken.trim(), publicKey ? publicKey.trim() : undefined);
+    const result = await saveMercadoPagoCredentials(
+      accessToken.trim(),
+      publicKey ? publicKey.trim() : undefined,
+      webhookSecret ? webhookSecret.trim() : undefined
+    );
 
     await db.insert(auditLogs).values({
       userId: req.user!.id,
@@ -550,6 +554,7 @@ router.post('/payments/mercadopago/config', requireMasterOwner, async (req: Auth
         isProduction: accessToken.trim().startsWith('APP_USR-'),
         collectorId: result.collectorId,
         nickname: result.nickname,
+        hasWebhookSecret: Boolean(webhookSecret && webhookSecret.trim().length > 0),
       }),
     });
 
@@ -564,7 +569,29 @@ router.post('/payments/mercadopago/config', requireMasterOwner, async (req: Auth
   }
 });
 
-// 14. TEST MERCADO PAGO API CONNECTION ON DEMAND
+// 14. CONTROLLED PRODUCTION CONNECTION VERIFICATION (Requirement 10)
+// Returns: CONECTADO | NÃO CONFIGURADO | ERRO DE AUTENTICAÇÃO | ERRO DE API
+router.all('/payments/mercadopago/verify-connection', requireMasterOwner, async (_req: AuthRequest, res) => {
+  try {
+    const { verifyMercadoPagoConnectionStatus } = await import('./mercadopagoService.ts');
+    const result = await verifyMercadoPagoConnectionStatus();
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(500).json({
+      status: 'ERRO DE API',
+      environmentConfigured: false,
+      accessTokenConfigured: false,
+      publicKeyConfigured: false,
+      webhookSecretConfigured: false,
+      webhookOperational: true,
+      lastConfirmationReceived: null,
+      lastPaymentConfirmed: null,
+      lastError: err.message,
+    });
+  }
+});
+
+// TEST MERCADO PAGO API CONNECTION ON DEMAND
 router.post('/payments/mercadopago/test-connection', requireMasterOwner, async (_req: AuthRequest, res) => {
   try {
     const { testMercadoPagoConnection } = await import('./mercadopagoService.ts');
@@ -572,6 +599,18 @@ router.post('/payments/mercadopago/test-connection', requireMasterOwner, async (
     return res.json(result);
   } catch (err: any) {
     return res.status(500).json({ connected: false, error: err.message });
+  }
+});
+
+// 15. EXECUTE 18 MANDATORY FINANCIAL AUDIT TESTS
+router.get('/financial-tests', requireMasterOwner, async (_req: AuthRequest, res) => {
+  try {
+    const { runAllFinancialTests } = await import('../../tests/financialAudit.test.ts');
+    const results = await runAllFinancialTests();
+    return res.json(results);
+  } catch (err: any) {
+    console.error('Error running financial tests:', err);
+    return res.status(500).json({ error: 'Erro ao executar bateria de testes financeiros.', details: err.message });
   }
 });
 
