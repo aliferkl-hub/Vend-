@@ -1,1 +1,2 @@
 - [Financial flow verification](financial-flow-verification.md) — when PostgreSQL is configured but schema-less, use the built-in pg-mem fallback for local financial tests and verify live reconciliation separately.
+- [Post-merge setup](post-merge-setup.md) — merges require an explicit non-interactive setup script configured in `.replit`.
