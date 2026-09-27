@@ -30,7 +30,6 @@ export const ShareBar: React.FC<ShareBarProps> = ({
   compact = false,
 }) => {
   const [copied, setCopied] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
 
   const defaultMessage =
@@ -47,20 +46,16 @@ export const ShareBar: React.FC<ShareBarProps> = ({
     marketingService.shareOnWhatsApp(defaultMessage, url);
   };
 
+  const handleFacebook = () => {
+    marketingService.shareOnFacebook(url);
+  };
+
   const handleInstagram = async () => {
-    setToastMessage('Link rastreável para o Instagram copiado! Abrindo Instagram...');
-    setTimeout(() => setToastMessage(null), 3500);
     await marketingService.shareOnInstagram(title, defaultMessage, url);
   };
 
   const handleTikTok = async () => {
-    setToastMessage('Link rastreável para o TikTok copiado! Abrindo TikTok...');
-    setTimeout(() => setToastMessage(null), 3500);
     await marketingService.shareOnTikTok(title, defaultMessage, url);
-  };
-
-  const handleFacebook = () => {
-    marketingService.shareOnFacebook(url);
   };
 
   const handleNativeShare = async () => {
@@ -74,11 +69,7 @@ export const ShareBar: React.FC<ShareBarProps> = ({
     const ok = await marketingService.copyToClipboard(url);
     if (ok) {
       setCopied(true);
-      setToastMessage('Link copiado para a área de transferência!');
-      setTimeout(() => {
-        setCopied(false);
-        setToastMessage(null);
-      }, 2500);
+      setTimeout(() => setCopied(false), 2500);
     }
   };
 
@@ -93,6 +84,14 @@ export const ShareBar: React.FC<ShareBarProps> = ({
             className="p-2 rounded-xl bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition"
           >
             <MessageCircle className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={handleFacebook}
+            title="Compartilhar no Facebook"
+            className="p-2 rounded-xl bg-blue-50 text-blue-600 hover:bg-blue-100 transition"
+          >
+            <Facebook className="w-4 h-4" />
           </button>
           <button
             type="button"
@@ -146,15 +145,8 @@ export const ShareBar: React.FC<ShareBarProps> = ({
             <Share2 className="w-4 h-4 text-sky-600" />
             Compartilhar
           </span>
-          <span className="text-[11px] text-slate-400">Links com UTM rastreáveis</span>
+          <span className="text-[11px] text-slate-400">Link rastreável</span>
         </div>
-
-        {toastMessage && (
-          <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-semibold flex items-center gap-2 animate-in fade-in">
-            <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>{toastMessage}</span>
-          </div>
-        )}
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
           {/* WhatsApp */}
@@ -165,6 +157,16 @@ export const ShareBar: React.FC<ShareBarProps> = ({
           >
             <MessageCircle className="w-4 h-4 shrink-0" />
             <span>WhatsApp</span>
+          </button>
+
+          {/* Facebook */}
+          <button
+            type="button"
+            onClick={handleFacebook}
+            className="py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition shadow-xs"
+          >
+            <Facebook className="w-4 h-4 shrink-0" />
+            <span>Facebook</span>
           </button>
 
           {/* Instagram */}
@@ -185,16 +187,6 @@ export const ShareBar: React.FC<ShareBarProps> = ({
           >
             <TikTokIcon className="w-4 h-4 shrink-0 text-cyan-400" />
             <span>TikTok</span>
-          </button>
-
-          {/* Facebook */}
-          <button
-            type="button"
-            onClick={handleFacebook}
-            className="py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition shadow-xs"
-          >
-            <Facebook className="w-4 h-4 shrink-0" />
-            <span>Facebook</span>
           </button>
 
           {/* QR Code */}
