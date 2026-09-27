@@ -26,9 +26,13 @@ import {
   Upload,
   X,
   Image as ImageIcon,
+  QrCode as QrIcon,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
 import { uploadImageToStorage } from '../utils/imageOptimizer.ts';
+import { QrCodeModal } from '../components/QrCodeModal.tsx';
+import { ShareBar } from '../components/ShareBar.tsx';
+import { marketingService } from '../services/marketingService.ts';
 
 interface MyStoreViewProps {
   onNavigate: (view: string, data?: any) => void;
@@ -39,8 +43,9 @@ export const MyStoreView: React.FC<MyStoreViewProps> = ({ onNavigate }) => {
 
   const [loading, setLoading] = useState(true);
   const [storeData, setStoreData] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'products' | 'orders' | 'customize' | 'ai_tools' | 'settings'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'orders' | 'customize' | 'ai_tools' | 'settings' | 'marketing'>('products');
   const [copiedLink, setCopiedLink] = useState(false);
+  const [isStoreQrOpen, setIsStoreQrOpen] = useState(false);
 
   // Bulk margin modal
   const [showBulkMarginModal, setShowBulkMarginModal] = useState(false);
@@ -557,6 +562,7 @@ export const MyStoreView: React.FC<MyStoreViewProps> = ({ onNavigate }) => {
           {[
             { id: 'products', label: 'Produtos da Loja', icon: Package },
             { id: 'orders', label: 'Pedidos Recebidos', icon: ShoppingBag },
+            { id: 'marketing', label: '📣 Divulgar Minha Loja', icon: Share2 },
             { id: 'ai_tools', label: '🚀 IA Comercial', icon: Sparkles },
             { id: 'customize', label: 'Personalizar Loja', icon: Edit2 },
             { id: 'settings', label: 'Configurações & Pagamentos', icon: Settings },
@@ -1035,6 +1041,157 @@ export const MyStoreView: React.FC<MyStoreViewProps> = ({ onNavigate }) => {
           </div>
         )}
 
+        {/* TAB CONTENT: MARKETING & DIVULGAÇÃO DA LOJA */}
+        {activeTab === 'marketing' && (
+          <div id="tab-content-marketing" className="space-y-6">
+            {/* Header & Main Public Link Card */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <Share2 className="w-5 h-5 text-sky-600" />
+                    Divulgação & Compartilhamento da Loja
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Sua loja possui uma página pública própria pronta para divulgar em redes sociais, anúncios e impressos.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => onNavigate('store-front', store.slug)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold shadow-xs transition"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Abrir Minha Loja Pública
+                </button>
+              </div>
+
+              {/* Public URL Box */}
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row items-center gap-3">
+                <div className="flex-1 w-full font-mono text-xs text-slate-800 break-all select-all">
+                  {typeof window !== 'undefined' ? `${window.location.origin}/loja/${store.slug}` : `https://vendmais.com/loja/${store.slug}`}
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const url = typeof window !== 'undefined' ? `${window.location.origin}/loja/${store.slug}` : `https://vendmais.com/loja/${store.slug}`;
+                      await marketingService.copyToClipboard(url);
+                      setCopiedLink(true);
+                      setTimeout(() => setCopiedLink(false), 2500);
+                    }}
+                    className="flex-1 sm:flex-initial py-2 px-3 bg-white hover:bg-slate-100 text-slate-800 border border-slate-200 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5"
+                  >
+                    {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copiedLink ? 'Copiado!' : 'Copiar Link'}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsStoreQrOpen(true)}
+                    className="flex-1 sm:flex-initial py-2 px-3 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5"
+                  >
+                    <QrIcon className="w-3.5 h-3.5" />
+                    QR Code
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Share Bar */}
+            <ShareBar
+              title={store.name}
+              shareText={`Olá! Conheça a nossa loja virtual oficial no VEND+:\n*${store.name}*\n${store.themeConfig?.slogan || 'Confira nosso catálogo com entrega garantida!'}`}
+              url={marketingService.buildStoreShareUrl(store.slug, 'whatsapp')}
+              type="STORE"
+            />
+
+            {/* Campaign Links for Social Media */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+              <h4 className="text-sm font-bold text-slate-900">Links Rápidos para Redes Sociais com UTM</h4>
+              <p className="text-xs text-slate-500">
+                Utilize estes links nos seus canais para acompanhar exatamente de onde vêm seus clientes:
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {/* Instagram Bio */}
+                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-900">
+                    <span>Instagram (Bio / Stories)</span>
+                    <span className="text-[10px] text-pink-600 font-semibold">utm_source=instagram</span>
+                  </div>
+                  <div className="text-[11px] text-slate-500 font-mono truncate">
+                    {marketingService.buildTrackedUrl(`/loja/${store.slug}`, 'instagram', 'social', `loja_${store.slug}`)}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const link = marketingService.buildTrackedUrl(`/loja/${store.slug}`, 'instagram', 'social', `loja_${store.slug}`);
+                      marketingService.copyToClipboard(link);
+                      setCopiedLink(true);
+                      setTimeout(() => setCopiedLink(false), 2000);
+                    }}
+                    className="w-full py-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 flex items-center justify-center gap-1.5 transition"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    Copiar para Bio
+                  </button>
+                </div>
+
+                {/* TikTok Bio */}
+                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-900">
+                    <span>TikTok</span>
+                    <span className="text-[10px] text-slate-800 font-semibold">utm_source=tiktok</span>
+                  </div>
+                  <div className="text-[11px] text-slate-500 font-mono truncate">
+                    {marketingService.buildTrackedUrl(`/loja/${store.slug}`, 'tiktok', 'social', `loja_${store.slug}`)}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const link = marketingService.buildTrackedUrl(`/loja/${store.slug}`, 'tiktok', 'social', `loja_${store.slug}`);
+                      marketingService.copyToClipboard(link);
+                      setCopiedLink(true);
+                      setTimeout(() => setCopiedLink(false), 2000);
+                    }}
+                    className="w-full py-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 flex items-center justify-center gap-1.5 transition"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    Copiar para TikTok
+                  </button>
+                </div>
+
+                {/* WhatsApp Direct */}
+                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-900">
+                    <span>WhatsApp</span>
+                    <span className="text-[10px] text-emerald-600 font-semibold">utm_source=whatsapp</span>
+                  </div>
+                  <div className="text-[11px] text-slate-500 font-mono truncate">
+                    {marketingService.buildTrackedUrl(`/loja/${store.slug}`, 'whatsapp', 'share', `loja_${store.slug}`)}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const link = marketingService.buildTrackedUrl(`/loja/${store.slug}`, 'whatsapp', 'share', `loja_${store.slug}`);
+                      marketingService.copyToClipboard(link);
+                      setCopiedLink(true);
+                      setTimeout(() => setCopiedLink(false), 2000);
+                    }}
+                    className="w-full py-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 flex items-center justify-center gap-1.5 transition"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    Copiar para WhatsApp
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* MODAL: BULK MARGIN */}
         {showBulkMarginModal && (
           <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -1364,6 +1521,17 @@ export const MyStoreView: React.FC<MyStoreViewProps> = ({ onNavigate }) => {
               </form>
             </div>
           </div>
+        )}
+
+        {/* Store QR Code Modal */}
+        {storeData?.store && (
+          <QrCodeModal
+            isOpen={isStoreQrOpen}
+            onClose={() => setIsStoreQrOpen(false)}
+            title={`QR Code — ${storeData.store.name}`}
+            subtitle="Escaneie para acessar o catálogo oficial ou imprima para colocar no seu balcão e embalagens"
+            url={typeof window !== 'undefined' ? `${window.location.origin}/loja/${storeData.store.slug}` : `https://vendmais.com/loja/${storeData.store.slug}`}
+          />
         )}
       </div>
     </div>

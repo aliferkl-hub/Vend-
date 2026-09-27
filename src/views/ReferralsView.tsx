@@ -12,10 +12,12 @@ import {
   Clock,
   ArrowLeft,
   Gift,
+  Instagram,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
 import { marketingService } from '../services/marketingService.ts';
 import { QrCodeModal } from '../components/QrCodeModal.tsx';
+import { TikTokIcon } from '../components/ShareBar.tsx';
 
 interface ReferralsViewProps {
   onNavigate: (view: string, param?: any) => void;
@@ -69,6 +71,16 @@ export const ReferralsView: React.FC<ReferralsViewProps> = ({ onNavigate }) => {
   const handleWhatsApp = () => {
     const text = 'Venha para o VEND+! Compre, venda e crie sua loja virtual com inteligência artificial e pagamento protegido:';
     marketingService.shareOnWhatsApp(text, referralLink);
+  };
+
+  const handleInstagram = async () => {
+    const text = 'Venha para o VEND+! Compre, venda e crie sua loja virtual com inteligência artificial:';
+    await marketingService.shareOnInstagram('Convite VEND+', text, referralLink);
+  };
+
+  const handleTikTok = async () => {
+    const text = 'Venha para o VEND+! Compre, venda e crie sua loja virtual com inteligência artificial:';
+    await marketingService.shareOnTikTok('Convite VEND+', text, referralLink);
   };
 
   const handleNativeShare = async () => {
@@ -148,6 +160,24 @@ export const ReferralsView: React.FC<ReferralsViewProps> = ({ onNavigate }) => {
             >
               <MessageCircle className="w-4 h-4" />
               WhatsApp
+            </button>
+
+            <button
+              onClick={handleInstagram}
+              className="py-2 px-3 bg-gradient-to-r from-[#833ab4] via-[#fd1d1d] to-[#fcb045] hover:opacity-95 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5"
+              title="Compartilhar no Instagram"
+            >
+              <Instagram className="w-4 h-4" />
+              <span>Instagram</span>
+            </button>
+
+            <button
+              onClick={handleTikTok}
+              className="py-2 px-3 bg-black hover:bg-slate-900 border border-slate-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5"
+              title="Compartilhar no TikTok"
+            >
+              <TikTokIcon className="w-4 h-4 text-cyan-400" />
+              <span>TikTok</span>
             </button>
 
             <button

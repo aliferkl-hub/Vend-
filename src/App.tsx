@@ -105,6 +105,22 @@ const MainApp: React.FC = () => {
           setStoreSlug(slug);
           setCurrentView('store-front');
         }
+      } else if (pathname.startsWith('/produto/') || urlParams.get('produto')) {
+        const prodParam = pathname.startsWith('/produto/')
+          ? pathname.replace('/produto/', '').split('/')[0]
+          : urlParams.get('produto');
+        if (prodParam) {
+          fetch(`/api/products/${prodParam}`)
+            .then((r) => (r.ok ? r.json() : null))
+            .then((prodData) => {
+              if (prodData) {
+                const prod = prodData.product || prodData;
+                setSelectedProduct(prod);
+                setCurrentView('product-detail');
+              }
+            })
+            .catch(() => {});
+        }
       }
 
       const loja = urlParams.get('loja');
@@ -221,12 +237,24 @@ const MainApp: React.FC = () => {
     setCurrentView(view);
     try {
       sessionStorage.setItem('vend_current_view', view);
+      if (view === 'marketplace') {
+        window.history.pushState({}, '', '/marketplace');
+      } else if (view === 'loja-ia') {
+        window.history.pushState({}, '', '/loja-ia');
+      } else if (view === 'referrals') {
+        window.history.pushState({}, '', '/indicacoes');
+      } else if (view === 'home') {
+        window.history.pushState({}, '', '/');
+      }
     } catch {}
     if (view === 'search' && typeof param === 'string') {
       setSearchQuery(param);
     }
     if (view === 'store-front' && typeof param === 'string') {
       setStoreSlug(param);
+      try {
+        window.history.pushState({}, '', `/loja/${param}`);
+      } catch {}
     }
     if (view === 'buy-now' && param) {
       setDirectBuyIntent(param);
@@ -264,6 +292,9 @@ const MainApp: React.FC = () => {
   const handleSelectProduct = (prod: Product) => {
     setSelectedProduct(prod);
     handleNavigate('product-detail');
+    try {
+      window.history.pushState({}, '', `/produto/${prod.slug || prod.id}`);
+    } catch {}
   };
 
   const handleSelectService = (serv: ServiceItem) => {
@@ -343,8 +374,12 @@ const MainApp: React.FC = () => {
         {currentView === 'product-detail' && selectedProduct && (
           <ProductDetailView
             product={selectedProduct}
-            onBack={() => setCurrentView('home')}
+            onBack={() => {
+              setSelectedProduct(null);
+              handleNavigate('home');
+            }}
             onBuyNow={handleBuyNow}
+            onNavigateToStore={(slug) => handleNavigate('store-front', slug)}
             onNegotiationStarted={(negId) => {
               setCurrentView('negotiations');
             }}

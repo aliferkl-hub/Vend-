@@ -289,7 +289,7 @@ export const StoreFrontView: React.FC<StoreFrontViewProps> = ({ storeSlug, onNav
           <ShareBar
             title={storeData.name}
             shareText={`Confira o catálogo oficial da loja ${storeData.name} no VEND+:`}
-            url={typeof window !== 'undefined' ? window.location.href : `https://vendmais.com/loja/${storeSlug}`}
+            url={marketingService.buildStoreShareUrl(storeSlug, 'whatsapp')}
             type="STORE"
           />
         </div>

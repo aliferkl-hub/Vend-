@@ -39,6 +39,7 @@ export const MarketingDashboardTab: React.FC = () => {
   const [campaignIdInput, setCampaignIdInput] = useState('');
   const [creatingCampaign, setCreatingCampaign] = useState(false);
   const [createdCampaignResult, setCreatedCampaignResult] = useState<any | null>(null);
+  const [campaignError, setCampaignError] = useState<string | null>(null);
 
   // QR Modal
   const [qrModalUrl, setQrModalUrl] = useState<string | null>(null);
@@ -69,6 +70,7 @@ export const MarketingDashboardTab: React.FC = () => {
     if (!campaignName.trim() || !campaignSource.trim()) return;
 
     setCreatingCampaign(true);
+    setCampaignError(null);
     try {
       const dest = campaignDestination === 'custom' ? customDestination : campaignDestination;
       const res = await authFetch('/api/marketing/campaigns', {
@@ -93,10 +95,10 @@ export const MarketingDashboardTab: React.FC = () => {
         fetchMarketingData();
       } else {
         const err = await res.json();
-        alert(err.error || 'Erro ao criar campanha');
+        setCampaignError(err.error || 'Erro ao criar campanha');
       }
     } catch (err: any) {
-      alert('Falha na requisição de criação de campanha');
+      setCampaignError('Falha na requisição de criação de campanha');
     } finally {
       setCreatingCampaign(false);
     }
@@ -401,6 +403,13 @@ export const MarketingDashboardTab: React.FC = () => {
             </button>
           </div>
         </form>
+
+        {/* Error message */}
+        {campaignError && (
+          <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold">
+            {campaignError}
+          </div>
+        )}
 
         {/* Created Campaign Output Card */}
         {createdCampaignResult && (

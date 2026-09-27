@@ -197,15 +197,68 @@ export const marketingService = {
   },
 
   // 9. Social sharing actions
+  buildTrackedSocialUrl(rawUrl: string, source: 'instagram' | 'tiktok' | 'whatsapp' | 'facebook'): string {
+    try {
+      const origin = typeof window !== 'undefined' ? window.location.origin : 'https://vendmais.com';
+      const u = new URL(rawUrl.startsWith('http') ? rawUrl : `${origin}${rawUrl}`);
+      u.searchParams.set('utm_source', source);
+      u.searchParams.set('utm_medium', source === 'whatsapp' ? 'share' : 'social');
+      if (!u.searchParams.has('utm_campaign')) {
+        u.searchParams.set('utm_campaign', `${source}_share`);
+      }
+      return u.toString();
+    } catch {
+      return rawUrl;
+    }
+  },
+
   shareOnWhatsApp(text: string, url: string): void {
-    const fullMessage = `${text}\n${url}`.trim();
+    const trackedUrl = this.buildTrackedSocialUrl(url, 'whatsapp');
+    const fullMessage = `${text}\n${trackedUrl}`.trim();
     const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(fullMessage)}`;
     window.open(waUrl, '_blank', 'noopener,noreferrer');
   },
 
   shareOnFacebook(url: string): void {
-    const fbUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`;
+    const trackedUrl = this.buildTrackedSocialUrl(url, 'facebook');
+    const fbUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(trackedUrl)}`;
     window.open(fbUrl, '_blank', 'noopener,noreferrer');
+  },
+
+  async shareOnInstagram(title: string, text: string, rawUrl: string): Promise<{ success: boolean; method: 'native' | 'clipboard' }> {
+    const trackedUrl = this.buildTrackedSocialUrl(rawUrl, 'instagram');
+    const fullMessage = `${text}\n${trackedUrl}`.trim();
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({ title, text: fullMessage, url: trackedUrl });
+        return { success: true, method: 'native' };
+      } catch (e: any) {
+        if (e.name === 'AbortError') return { success: false, method: 'native' };
+      }
+    }
+    await this.copyToClipboard(trackedUrl);
+    if (typeof window !== 'undefined') {
+      window.open('https://www.instagram.com/', '_blank', 'noopener,noreferrer');
+    }
+    return { success: true, method: 'clipboard' };
+  },
+
+  async shareOnTikTok(title: string, text: string, rawUrl: string): Promise<{ success: boolean; method: 'native' | 'clipboard' }> {
+    const trackedUrl = this.buildTrackedSocialUrl(rawUrl, 'tiktok');
+    const fullMessage = `${text}\n${trackedUrl}`.trim();
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({ title, text: fullMessage, url: trackedUrl });
+        return { success: true, method: 'native' };
+      } catch (e: any) {
+        if (e.name === 'AbortError') return { success: false, method: 'native' };
+      }
+    }
+    await this.copyToClipboard(trackedUrl);
+    if (typeof window !== 'undefined') {
+      window.open('https://www.tiktok.com/', '_blank', 'noopener,noreferrer');
+    }
+    return { success: true, method: 'clipboard' };
   },
 
   async shareNative(title: string, text: string, url: string): Promise<boolean> {

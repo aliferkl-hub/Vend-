@@ -59,6 +59,7 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [isNegModalOpen, setIsNegModalOpen] = useState(false);
   const [addedToast, setAddedToast] = useState(false);
+  const [copiedToast, setCopiedToast] = useState(false);
   const [isFavorited, setIsFavorited] = useState(false);
 
   React.useEffect(() => {
@@ -444,16 +445,24 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
                 </button>
 
                 <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(window.location.href);
-                    alert('Link do produto copiado!');
+                  onClick={async () => {
+                    await marketingService.copyToClipboard(productShareUrl);
+                    setCopiedToast(true);
+                    setTimeout(() => setCopiedToast(false), 2500);
                   }}
                   className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors"
                 >
                   <Share2 className="w-4 h-4" />
-                  <span>Compartilhar</span>
+                  <span>{copiedToast ? 'Link copiado!' : 'Compartilhar'}</span>
                 </button>
               </div>
+
+              {copiedToast && (
+                <div className="p-2.5 bg-sky-50 border border-sky-200 rounded-xl text-sky-800 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+                  <CheckCircle className="w-4 h-4 text-sky-600 shrink-0" />
+                  <span>Link rastreável do produto copiado para a área de transferência!</span>
+                </div>
+              )}
 
               {addedToast && (
                 <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-800 text-xs font-bold flex items-center gap-2 animate-in fade-in">
