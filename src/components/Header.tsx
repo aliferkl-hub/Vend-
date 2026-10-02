@@ -16,6 +16,8 @@ import {
   Sparkles,
   Store,
   Zap,
+  Share2,
+  Award,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
 import { useCart } from '../context/CartContext.tsx';
@@ -80,18 +82,33 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="font-medium text-emerald-300">Compra Segura VEND+:</span>
             <span className="hidden sm:inline">Liberação de entrega protegida por código de 4 dígitos.</span>
           </div>
-          <div className="flex items-center gap-4 text-slate-400 text-xs">
+          <div className="flex items-center gap-3.5 text-slate-400 text-xs">
+            <button
+              id="header-nav-hub"
+              onClick={() => onNavigate('hub')}
+              className="text-emerald-400 hover:text-emerald-300 font-bold transition-colors flex items-center gap-1 cursor-pointer"
+            >
+              <Share2 className="w-3 h-3" />
+              <span>VEND+ HUB</span>
+            </button>
+            <button
+              id="header-nav-seja-vendedor"
+              onClick={() => onNavigate('seja-vendedor')}
+              className="text-sky-300 hover:text-sky-200 font-bold transition-colors cursor-pointer"
+            >
+              Seja Vendedor
+            </button>
             <button
               id="header-nav-plans"
               onClick={() => onNavigate('plans')}
-              className="hover:text-white transition-colors"
+              className="hover:text-white transition-colors hidden md:inline cursor-pointer"
             >
-              Planos para Vendedores
+              Planos
             </button>
             <button
               id="header-nav-faq"
               onClick={() => onNavigate('faq')}
-              className="hover:text-white transition-colors"
+              className="hover:text-white transition-colors hidden sm:inline cursor-pointer"
             >
               Ajuda & FAQ
             </button>
@@ -277,6 +294,33 @@ export const Header: React.FC<HeaderProps> = ({
                     >
                       <Store className="w-4 h-4 text-sky-400" />
                       <span>Minha Loja Virtual (IA)</span>
+                    </button>
+
+                    <button
+                      id="dropdown-item-hub"
+                      onClick={() => onNavigate('hub')}
+                      className="w-full text-left px-3 py-2 hover:bg-slate-800 flex items-center gap-2 text-emerald-300 font-semibold"
+                    >
+                      <Share2 className="w-4 h-4 text-emerald-400" />
+                      <span>VEND+ HUB (Divulgação)</span>
+                    </button>
+
+                    <button
+                      id="dropdown-item-affiliates"
+                      onClick={() => onNavigate('affiliates')}
+                      className="w-full text-left px-3 py-2 hover:bg-slate-800 flex items-center gap-2 text-teal-300 font-semibold"
+                    >
+                      <Award className="w-4 h-4 text-teal-400" />
+                      <span>Painel de Afiliado</span>
+                    </button>
+
+                    <button
+                      id="dropdown-item-seja-vendedor"
+                      onClick={() => onNavigate('seja-vendedor')}
+                      className="w-full text-left px-3 py-2 hover:bg-slate-800 flex items-center gap-2 text-slate-300"
+                    >
+                      <Sparkles className="w-4 h-4 text-amber-400" />
+                      <span>Seja Vendedor (Onboarding)</span>
                     </button>
 
                     <button

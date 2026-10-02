@@ -138,6 +138,16 @@ export const stores = pgTable('stores', {
   offersPickup: boolean('offers_pickup').default(true).notNull(),
   followersCount: integer('followers_count').default(0).notNull(),
   status: text('status').notNull().default('ACTIVE'),
+  isVerifiedPartner: boolean('is_verified_partner').default(false).notNull(),
+  partnerType: text('partner_type'), // 'PESSOA_FISICA' | 'MEI' | 'EMPRESA' | 'VENDEDOR_PROFISSIONAL' | 'PARCEIRO_COMERCIAL'
+  partnerBadge: text('partner_badge'), // 'PARCEIRO_VERIFICADO' | 'LOJA_VERIFICADA' | 'EM_ANALISE'
+  partnerApprovedAt: timestamp('partner_approved_at'),
+  city: text('city'),
+  state: text('state'),
+  allowAffiliates: boolean('allow_affiliates').default(true).notNull(),
+  shippingMethods: text('shipping_methods'),
+  deliveryInfo: text('delivery_info'),
+  partnerInviteCode: text('partner_invite_code'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -171,6 +181,8 @@ export const products = pgTable('products', {
   offersDelivery: boolean('offers_delivery').default(true).notNull(),
   offersPickup: boolean('offers_pickup').default(true).notNull(),
   allowsNegotiation: boolean('allows_negotiation').default(true).notNull(),
+  allowAffiliates: boolean('allow_affiliates').default(true).notNull(),
+  affiliateCommissionPercent: integer('affiliate_commission_percent'),
   status: text('status').notNull().default('ACTIVE'), // 'ACTIVE' | 'INACTIVE' | 'ARCHIVED' | 'PENDING_REVIEW'
   rating: text('rating').default('5.0'),
   viewsCount: integer('views_count').default(0).notNull(),
@@ -578,6 +590,155 @@ export const referrals = pgTable('referrals', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+// 34. AFFILIATES (OFFICIAL VEND+ AFFILIATES PROGRAM)
+export const affiliates = pgTable('affiliates', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull().unique(),
+  affiliateCode: text('affiliate_code').notNull().unique(),
+  status: text('status').notNull().default('ACTIVE'), // 'ACTIVE' | 'IN_REVIEW' | 'SUSPENDED' | 'BLOCKED'
+  termsAcceptedAt: timestamp('terms_accepted_at').defaultNow().notNull(),
+  totalClicks: integer('total_clicks').default(0).notNull(),
+  totalOrders: integer('total_orders').default(0).notNull(),
+  totalSalesCents: integer('total_sales_cents').default(0).notNull(),
+  pendingCommissionCents: integer('pending_commission_cents').default(0).notNull(),
+  availableCommissionCents: integer('available_commission_cents').default(0).notNull(),
+  paidCommissionCents: integer('paid_commission_cents').default(0).notNull(),
+  pixKeyType: text('pix_key_type'),
+  pixKey: text('pix_key'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// 35. AFFILIATE_LINKS
+export const affiliateLinks = pgTable('affiliate_links', {
+  id: serial('id').primaryKey(),
+  affiliateId: integer('affiliate_id').references(() => affiliates.id, { onDelete: 'cascade' }).notNull(),
+  productId: integer('product_id').references(() => products.id, { onDelete: 'cascade' }),
+  storeId: integer('store_id').references(() => stores.id, { onDelete: 'cascade' }),
+  code: text('code').notNull().unique(),
+  customName: text('custom_name'),
+  destinationUrl: text('destination_url').notNull(),
+  clicksCount: integer('clicks_count').default(0).notNull(),
+  conversionsCount: integer('conversions_count').default(0).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// 36. AFFILIATE_CLICKS
+export const affiliateClicks = pgTable('affiliate_clicks', {
+  id: serial('id').primaryKey(),
+  affiliateId: integer('affiliate_id').references(() => affiliates.id, { onDelete: 'cascade' }).notNull(),
+  affiliateLinkId: integer('affiliate_link_id').references(() => affiliateLinks.id, { onDelete: 'cascade' }),
+  productId: integer('product_id').references(() => products.id, { onDelete: 'set null' }),
+  sessionId: text('session_id').notNull(),
+  ipHash: text('ip_hash'),
+  source: text('source'),
+  medium: text('medium'),
+  campaign: text('campaign'),
+  landingPath: text('landing_path'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// 37. AFFILIATE_COMMISSIONS
+export const affiliateCommissions = pgTable('affiliate_commissions', {
+  id: serial('id').primaryKey(),
+  affiliateId: integer('affiliate_id').references(() => affiliates.id, { onDelete: 'cascade' }).notNull(),
+  orderId: integer('order_id').references(() => orders.id, { onDelete: 'cascade' }).notNull(),
+  productId: integer('product_id').references(() => products.id, { onDelete: 'set null' }),
+  sellerId: integer('seller_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  grossAmountCents: integer('gross_amount_cents').notNull(),
+  commissionPercent: integer('commission_percent').notNull(),
+  commissionCents: integer('commission_cents').notNull(),
+  platformFeeCents: integer('platform_fee_cents').default(0).notNull(),
+  status: text('status').notNull().default('PENDING'), // 'PENDING' | 'AVAILABLE' | 'PAID' | 'CANCELLED' | 'IN_REVIEW'
+  availableAt: timestamp('available_at'),
+  paidAt: timestamp('paid_at'),
+  payoutRequestId: integer('payout_request_id').references(() => payoutRequests.id, { onDelete: 'set null' }),
+  rejectionReason: text('rejection_reason'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// 38. GROWTH_CAMPAIGNS
+export const growthCampaigns = pgTable('growth_campaigns', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  slug: text('slug').notNull().unique(),
+  targetAudience: text('target_audience').notNull().default('ALL'), // 'SELLERS' | 'BUYERS' | 'AFFILIATES' | 'ALL'
+  targetCategory: text('target_category'),
+  benefitType: text('benefit_type').notNull().default('COMMISSION'), // 'COMMISSION' | 'BOOST' | 'BADGE'
+  benefitValue: text('benefit_value'),
+  status: text('status').notNull().default('ACTIVE'), // 'ACTIVE' | 'INACTIVE' | 'DRAFT'
+  startDate: timestamp('start_date'),
+  endDate: timestamp('end_date'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// 39. INTERESTED_LEADS (WAITLIST / LEADS DE CRESCIMENTO)
+export const interestedLeads = pgTable('interested_leads', {
+  id: serial('id').primaryKey(),
+  email: text('email').notNull(),
+  name: text('name'),
+  phone: text('phone'),
+  segment: text('segment').notNull().default('BUYER'), // 'BUYER' | 'SELLER' | 'AFFILIATE'
+  categoryInterest: text('category_interest'),
+  notes: text('notes'),
+  ipAddress: text('ip_address'),
+  status: text('status').notNull().default('PENDING'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// 40. SELLER_PROSPECTS (CRM DE PROSPECÇÃO DE VENDEDORES)
+export const sellerProspects = pgTable('seller_prospects', {
+  id: serial('id').primaryKey(),
+  businessName: text('business_name').notNull(),
+  category: text('category').notNull(),
+  publicChannel: text('public_channel').notNull().default('INSTAGRAM'), // 'INSTAGRAM' | 'WHATSAPP' | 'WEBSITE' | 'TIKTOK' | 'FACEBOOK' | 'OUTRO'
+  contactHandle: text('contact_handle'),
+  phone: text('phone'),
+  email: text('email'),
+  estimatedProducts: text('estimated_products'),
+  notes: text('notes'),
+  status: text('status').notNull().default('NEW'), // 'NEW' | 'CONTACTED' | 'INVITE_SENT' | 'REGISTERED' | 'STORE_CREATED' | 'FIRST_SALE' | 'DECLINED'
+  inviteCode: text('invite_code'),
+  registeredUserId: integer('registered_user_id').references(() => users.id, { onDelete: 'set null' }),
+  lastContactAt: timestamp('last_contact_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// 41. PARTNER_APPLICATIONS (PARCEIROS VEND+)
+export const partnerApplications = pgTable('partner_applications', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+  storeId: integer('store_id').references(() => stores.id, { onDelete: 'set null' }),
+  fullName: text('full_name').notNull(),
+  businessName: text('business_name').notNull(),
+  businessType: text('business_type').notNull().default('PESSOA_FISICA'), // 'PESSOA_FISICA' | 'MEI' | 'EMPRESA' | 'VENDEDOR_PROFISSIONAL' | 'PARCEIRO_COMERCIAL'
+  documentNumber: text('document_number'), // CPF or CNPJ
+  whatsapp: text('whatsapp').notNull(),
+  email: text('email').notNull(),
+  city: text('city').notNull(),
+  state: text('state').notNull(),
+  category: text('category').notNull(),
+  instagram: text('instagram'),
+  website: text('website'),
+  description: text('description'),
+  productsDescription: text('products_description'),
+  shippingMethods: text('shipping_methods'),
+  pixKey: text('pix_key'),
+  pixKeyType: text('pix_key_type'),
+  status: text('status').notNull().default('PENDENTE'), // 'PENDENTE' | 'EM_ANALISE' | 'APROVADO' | 'RECUSADO' | 'INFO_SOLICITADA'
+  adminNotes: text('admin_notes'),
+  infoRequested: text('info_requested'),
+  reviewedById: integer('reviewed_by_id').references(() => users.id, { onDelete: 'set null' }),
+  reviewedAt: timestamp('reviewed_at'),
+  referredByPartnerCode: text('referred_by_partner_code'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
 // RELATIONS
 export const usersRelations = relations(users, ({ one, many }) => ({
   profile: one(profiles, { fields: [users.id], references: [profiles.userId] }),
@@ -590,6 +751,28 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   notifications: many(notifications),
   favorites: many(favorites),
   referralsMade: many(referrals, { relationName: 'referrerUser' }),
+  affiliateProfile: one(affiliates, { fields: [users.id], references: [affiliates.userId] }),
+}));
+
+export const affiliatesRelations = relations(affiliates, ({ one, many }) => ({
+  user: one(users, { fields: [affiliates.userId], references: [users.id] }),
+  links: many(affiliateLinks),
+  clicks: many(affiliateClicks),
+  commissions: many(affiliateCommissions),
+}));
+
+export const affiliateLinksRelations = relations(affiliateLinks, ({ one, many }) => ({
+  affiliate: one(affiliates, { fields: [affiliateLinks.affiliateId], references: [affiliates.id] }),
+  product: one(products, { fields: [affiliateLinks.productId], references: [products.id] }),
+  store: one(stores, { fields: [affiliateLinks.storeId], references: [stores.id] }),
+  clicks: many(affiliateClicks),
+}));
+
+export const affiliateCommissionsRelations = relations(affiliateCommissions, ({ one }) => ({
+  affiliate: one(affiliates, { fields: [affiliateCommissions.affiliateId], references: [affiliates.id] }),
+  order: one(orders, { fields: [affiliateCommissions.orderId], references: [orders.id] }),
+  product: one(products, { fields: [affiliateCommissions.productId], references: [products.id] }),
+  seller: one(users, { fields: [affiliateCommissions.sellerId], references: [users.id] }),
 }));
 
 export const referralsRelations = relations(referrals, ({ one }) => ({

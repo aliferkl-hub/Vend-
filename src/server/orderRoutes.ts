@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import crypto from 'crypto';
-import { db } from '../db/index.ts';
+import { db, pool } from '../db/index.ts';
 import {
   orders,
   orderItems,
@@ -15,6 +15,8 @@ import {
   negotiations,
   addresses,
   financialLedger,
+  affiliates,
+  affiliateCommissions,
 } from '../db/schema.ts';
 import { eq, and, or, desc } from 'drizzle-orm';
 import { AuthRequest, requireAuth } from '../middleware/auth.ts';
@@ -30,7 +32,7 @@ function generate4DigitCode(): string {
 router.post('/checkout', requireAuth, async (req: AuthRequest, res) => {
   try {
     const buyer = req.user!;
-    const { items, deliveryType = 'SHIPPING', addressId, acceptedNegotiationId, paymentMethod } = req.body;
+    const { items, deliveryType = 'SHIPPING', addressId, acceptedNegotiationId, paymentMethod, affiliateCode } = req.body;
 
     // Strict Enforcement: If user chose PIX or MERCADO_PAGO_CHECKOUT, verify Mercado Pago is configured
     if (paymentMethod === 'PIX' || paymentMethod === 'MERCADO_PAGO_CHECKOUT') {
@@ -252,6 +254,72 @@ router.post('/checkout', requireAuth, async (req: AuthRequest, res) => {
       attempts: 0,
     });
 
+    // Record affiliate attribution & commission if eligible
+    const effectiveAffCode = affiliateCode || req.cookies?.vend_affiliate_code;
+    if (effectiveAffCode && typeof effectiveAffCode === 'string') {
+      try {
+        const [targetAff] = await db
+          .select()
+          .from(affiliates)
+          .where(eq(affiliates.affiliateCode, effectiveAffCode.trim().toUpperCase()))
+          .limit(1);
+
+        if (targetAff && targetAff.status === 'ACTIVE') {
+          // Anti-fraud validation
+          const isSelfReferral = targetAff.userId === buyer.id;
+          const isSellerSelfAffiliate = targetAff.userId === sellerId;
+
+          // Prevent self referral or seller affiliating own store
+          if (!isSelfReferral && !isSellerSelfAffiliate) {
+            const { getAppSetting } = await import('./growthRoutes.ts');
+            const defaultAffPercentStr = await getAppSetting('default_affiliate_commission_percent', '10');
+            const defaultAffPercent = parseInt(defaultAffPercentStr, 10) || 10;
+
+            let totalAffiliateCommissionCents = 0;
+
+            for (const item of validatedItems) {
+              if (item.productId) {
+                const [p] = await db.select().from(products).where(eq(products.id, item.productId)).limit(1);
+                if (p && p.allowAffiliates !== false) {
+                  const commPercent = p.affiliateCommissionPercent || defaultAffPercent;
+                  const itemAffCommCents = Math.round((item.subtotalCents * commPercent) / 100);
+
+                  if (itemAffCommCents > 0) {
+                    await db.insert(affiliateCommissions).values({
+                      affiliateId: targetAff.id,
+                      orderId: newOrder.id,
+                      productId: p.id,
+                      sellerId,
+                      grossAmountCents: item.subtotalCents,
+                      commissionPercent: commPercent,
+                      commissionCents: itemAffCommCents,
+                      platformFeeCents: commissionCents,
+                      status: 'PENDING',
+                    });
+                    totalAffiliateCommissionCents += itemAffCommCents;
+                  }
+                }
+              }
+            }
+
+            if (totalAffiliateCommissionCents > 0) {
+              await pool.query(
+                `UPDATE affiliates 
+                 SET pending_commission_cents = pending_commission_cents + $1,
+                     total_orders = total_orders + 1,
+                     total_sales_cents = total_sales_cents + $2,
+                     updated_at = NOW()
+                 WHERE id = $3`,
+                [totalAffiliateCommissionCents, totalGrossCents, targetAff.id]
+              );
+            }
+          }
+        }
+      } catch (affErr) {
+        console.error('[Affiliate Commission Setup] Erro não bloqueante:', affErr);
+      }
+    }
+
     // If this was from a negotiation, mark as COMPLETED
     if (acceptedNegotiationId) {
       await db
@@ -458,6 +526,31 @@ router.patch('/:id/status', requireAuth, async (req: AuthRequest, res) => {
     if (status === 'CANCELLED') {
       updatePayload.payoutStatus = 'CANCELLED';
       updatePayload.paymentStatus = 'CANCELLED';
+
+      // Cancel any pending affiliate commissions for this order
+      try {
+        const affComms = await db
+          .select()
+          .from(affiliateCommissions)
+          .where(and(eq(affiliateCommissions.orderId, order.id), eq(affiliateCommissions.status, 'PENDING')));
+
+        for (const ac of affComms) {
+          await db
+            .update(affiliateCommissions)
+            .set({ status: 'CANCELLED', rejectionReason: 'Pedido cancelado', updatedAt: now })
+            .where(eq(affiliateCommissions.id, ac.id));
+
+          await pool.query(
+            `UPDATE affiliates 
+             SET pending_commission_cents = GREATEST(0, pending_commission_cents - $1),
+                 updated_at = NOW()
+             WHERE id = $2`,
+            [ac.commissionCents, ac.affiliateId]
+          );
+        }
+      } catch (affCancelErr) {
+        console.error('[Affiliate Commission Cancel] Erro:', affCancelErr);
+      }
     }
 
     const [updated] = await db

@@ -29,6 +29,9 @@ import { StoreFrontView } from './views/StoreFrontView.tsx';
 import { MarketplaceLandingView } from './views/MarketplaceLandingView.tsx';
 import { LojaIaLandingView } from './views/LojaIaLandingView.tsx';
 import { ReferralsView } from './views/ReferralsView.tsx';
+import { HubView } from './views/HubView.tsx';
+import { AffiliatesView } from './views/AffiliatesView.tsx';
+import { SejaVendedorView } from './views/SejaVendedorView.tsx';
 import { marketingService } from './services/marketingService.ts';
 
 import { Product, ServiceItem, Category, Negotiation, DirectBuyIntent } from './types.ts';
@@ -47,6 +50,9 @@ const MainApp: React.FC = () => {
       if (pathname === '/marketplace' || urlParams.get('view') === 'marketplace') return 'marketplace';
       if (pathname === '/loja-ia' || urlParams.get('view') === 'loja-ia') return 'loja-ia';
       if (pathname === '/indicacoes' || urlParams.get('view') === 'referrals' || urlParams.get('view') === 'indicacoes') return 'referrals';
+      if (pathname === '/hub' || urlParams.get('view') === 'hub') return 'hub';
+      if (pathname === '/divulgar' || pathname === '/afiliados' || urlParams.get('view') === 'affiliates' || urlParams.get('view') === 'divulgar') return 'affiliates';
+      if (pathname === '/seja-vendedor' || pathname === '/vender' || urlParams.get('view') === 'seja-vendedor') return 'seja-vendedor';
       if (pathname.startsWith('/loja/') || urlParams.get('loja')) return 'store-front';
       const payment = urlParams.get('payment') || urlParams.get('status') || urlParams.get('collection_status');
       if (payment === 'success' || payment === 'approved') return 'orders';
@@ -99,6 +105,12 @@ const MainApp: React.FC = () => {
         setCurrentView('loja-ia');
       } else if (pathname === '/indicacoes' || urlParams.get('view') === 'referrals' || urlParams.get('view') === 'indicacoes') {
         setCurrentView('referrals');
+      } else if (pathname === '/hub' || urlParams.get('view') === 'hub') {
+        setCurrentView('hub');
+      } else if (pathname === '/divulgar' || pathname === '/afiliados' || urlParams.get('view') === 'affiliates' || urlParams.get('view') === 'divulgar') {
+        setCurrentView('affiliates');
+      } else if (pathname === '/seja-vendedor' || pathname === '/vender' || urlParams.get('view') === 'seja-vendedor') {
+        setCurrentView('seja-vendedor');
       } else if (pathname.startsWith('/loja/')) {
         const slug = pathname.replace('/loja/', '').split('/')[0];
         if (slug) {
@@ -135,6 +147,25 @@ const MainApp: React.FC = () => {
         sessionStorage.removeItem('vend_direct_buy_intent');
         sessionStorage.removeItem('vend_checkout_negotiation');
         setCurrentView('orders');
+      }
+
+      // Track affiliate referrals
+      const affCode = urlParams.get('aff') || urlParams.get('ref');
+      if (affCode) {
+        try {
+          localStorage.setItem('vend_affiliate_code', affCode);
+          fetch('/api/growth/affiliates/track-click', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              affiliateCode: affCode,
+              landingPath: pathname + window.location.search,
+              source: urlParams.get('utm_source') || 'affiliate_link',
+              medium: urlParams.get('utm_medium') || 'social',
+              campaign: urlParams.get('utm_campaign') || null,
+            }),
+          }).catch(() => {});
+        } catch {}
       }
     } catch {
       // ignore
@@ -243,6 +274,12 @@ const MainApp: React.FC = () => {
         window.history.pushState({}, '', '/loja-ia');
       } else if (view === 'referrals') {
         window.history.pushState({}, '', '/indicacoes');
+      } else if (view === 'hub') {
+        window.history.pushState({}, '', '/hub');
+      } else if (view === 'affiliates') {
+        window.history.pushState({}, '', '/divulgar');
+      } else if (view === 'seja-vendedor') {
+        window.history.pushState({}, '', '/seja-vendedor');
       } else if (view === 'home') {
         window.history.pushState({}, '', '/');
       }
@@ -526,6 +563,26 @@ const MainApp: React.FC = () => {
             onNavigate={(view, data) => {
               handleNavigate(view, data);
             }}
+          />
+        )}
+
+        {currentView === 'hub' && (
+          <HubView
+            onNavigate={handleNavigate}
+            onSelectProduct={handleSelectProduct}
+          />
+        )}
+
+        {currentView === 'affiliates' && (
+          <AffiliatesView
+            onNavigate={handleNavigate}
+            onSelectProduct={handleSelectProduct}
+          />
+        )}
+
+        {currentView === 'seja-vendedor' && (
+          <SejaVendedorView
+            onNavigate={handleNavigate}
           />
         )}
       </main>

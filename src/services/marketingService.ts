@@ -14,6 +14,7 @@ export interface TrackEventOptions {
     | 'page_view'
     | 'signup'
     | 'login'
+    | 'lead_capture'
     | 'store_created'
     | 'product_created'
     | 'product_published'

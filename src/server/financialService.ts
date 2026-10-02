@@ -10,6 +10,8 @@ import {
   plans,
   auditLogs,
   deliveryCodes,
+  affiliates,
+  affiliateCommissions,
 } from '../db/schema.ts';
 import { eq, and, sql, desc, inArray } from 'drizzle-orm';
 
@@ -398,6 +400,35 @@ export async function releaseEscrowForEligibleOrder(
       updatedAt: now,
     })
     .where(eq(financialLedger.orderId, order.id));
+
+  // Release any pending affiliate commissions for this order
+  try {
+    const pendingAffComms = await database
+      .select()
+      .from(affiliateCommissions)
+      .where(and(eq(affiliateCommissions.orderId, order.id), eq(affiliateCommissions.status, 'PENDING')));
+
+    for (const affComm of pendingAffComms) {
+      await database
+        .update(affiliateCommissions)
+        .set({
+          status: 'AVAILABLE',
+          availableAt: now,
+          updatedAt: now,
+        })
+        .where(eq(affiliateCommissions.id, affComm.id));
+
+      await database.execute(sql`
+        UPDATE affiliates
+        SET pending_commission_cents = GREATEST(0, pending_commission_cents - ${affComm.commissionCents}),
+            available_commission_cents = available_commission_cents + ${affComm.commissionCents},
+            updated_at = NOW()
+        WHERE id = ${affComm.affiliateId}
+      `);
+    }
+  } catch (affErr) {
+    console.error('[Affiliate Escrow Release] Erro ao liberar comissão de afiliado:', affErr);
+  }
 
   const balance = await syncSellerBalance(order.sellerId, database);
   return {

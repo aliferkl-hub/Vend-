@@ -18,6 +18,7 @@ import {
   Bot,
   Sliders,
   Users,
+  Share2,
 } from 'lucide-react';
 import { Product, ServiceItem, Category } from '../types.ts';
 import { ProductCard } from '../components/ProductCard.tsx';
@@ -537,12 +538,99 @@ export const HomeView: React.FC<HomeViewProps> = ({
           </div>
         </div>
 
-        {filteredProducts.length === 0 ? (
+        {safeProducts.length === 0 ? (
+          <div className="bg-white rounded-3xl border border-slate-200 p-8 sm:p-14 text-center space-y-6 shadow-2xs max-w-3xl mx-auto">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-emerald-50 text-emerald-800 text-xs font-bold border border-emerald-200/60 mx-auto">
+              <span>🚀 O VEND+ está começando</span>
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+                Faça parte dos primeiros vendedores, compradores e divulgadores da plataforma
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-500 max-w-lg mx-auto">
+                Estamos construindo a primeira comunidade VEND+. Escolha seu caminho para começar:
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-2">
+              {/* QUERO VENDER */}
+              <button
+                onClick={() => onNavigate('seja-vendedor')}
+                className="p-5 rounded-2xl bg-gradient-to-b from-emerald-50 to-white border border-emerald-200 hover:border-emerald-400 hover:shadow-md transition text-left flex flex-col justify-between group cursor-pointer"
+              >
+                <div>
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500 text-slate-950 flex items-center justify-center font-bold mb-3 shadow-xs">
+                    <Store className="w-5 h-5" />
+                  </div>
+                  <h4 className="text-sm font-black text-slate-900 group-hover:text-emerald-700 transition">
+                    🏪 QUERO VENDER
+                  </h4>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Crie sua loja com IA em 2 min e publique seus produtos.
+                  </p>
+                </div>
+                <div className="mt-4 text-[11px] font-bold text-emerald-700 flex items-center gap-1">
+                  <span>Começar agora</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </div>
+              </button>
+
+              {/* QUERO DIVULGAR */}
+              <button
+                onClick={() => onNavigate('hub')}
+                className="p-5 rounded-2xl bg-gradient-to-b from-sky-50 to-white border border-sky-200 hover:border-sky-400 hover:shadow-md transition text-left flex flex-col justify-between group cursor-pointer"
+              >
+                <div>
+                  <div className="w-10 h-10 rounded-xl bg-sky-500 text-white flex items-center justify-center font-bold mb-3 shadow-xs">
+                    <Share2 className="w-5 h-5" />
+                  </div>
+                  <h4 className="text-sm font-black text-slate-900 group-hover:text-sky-700 transition">
+                    📣 QUERO DIVULGAR
+                  </h4>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Fature comissões compartilhando ofertas no WhatsApp e redes.
+                  </p>
+                </div>
+                <div className="mt-4 text-[11px] font-bold text-sky-700 flex items-center gap-1">
+                  <span>Acessar HUB</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </div>
+              </button>
+
+              {/* QUERO COMPRAR */}
+              <button
+                onClick={() => onNavigate('search')}
+                className="p-5 rounded-2xl bg-gradient-to-b from-indigo-50 to-white border border-indigo-200 hover:border-indigo-400 hover:shadow-md transition text-left flex flex-col justify-between group cursor-pointer"
+              >
+                <div>
+                  <div className="w-10 h-10 rounded-xl bg-indigo-500 text-white flex items-center justify-center font-bold mb-3 shadow-xs">
+                    <ShoppingBag className="w-5 h-5" />
+                  </div>
+                  <h4 className="text-sm font-black text-slate-900 group-hover:text-indigo-700 transition">
+                    🛒 QUERO COMPRAR
+                  </h4>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Explore categorias e receba alertas de novas publicações.
+                  </p>
+                </div>
+                <div className="mt-4 text-[11px] font-bold text-indigo-700 flex items-center gap-1">
+                  <span>Explorar catálogo</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </div>
+              </button>
+            </div>
+
+            <p className="text-[11px] text-slate-400 font-medium">
+              Estamos construindo a primeira comunidade VEND+.
+            </p>
+          </div>
+        ) : filteredProducts.length === 0 ? (
           <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-500">
             <p className="font-semibold text-sm">Nenhum produto encontrado neste filtro.</p>
             <button
               onClick={() => setFilterCondition('ALL')}
-              className="mt-3 text-xs font-bold text-sky-600 hover:underline"
+              className="mt-3 text-xs font-bold text-sky-600 hover:underline cursor-pointer"
             >
               Limpar filtros
             </button>

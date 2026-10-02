@@ -15,6 +15,9 @@ User-agent: *
 Allow: /
 Allow: /marketplace
 Allow: /loja-ia
+Allow: /hub
+Allow: /afiliados
+Allow: /seja-vendedor
 Allow: /loja/
 Allow: /produto/
 Disallow: /admin
@@ -63,6 +66,24 @@ export async function handleSitemapXml(req: Request, res: Response) {
     <lastmod>${now}</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>${baseUrl}/hub</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>${baseUrl}/afiliados</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>${baseUrl}/seja-vendedor</loc>
+    <lastmod>${now}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>`;
 
     // Add stores
@@ -111,8 +132,11 @@ export async function handleSocialSharePreviews(req: Request, res: Response, nex
   const isStoreRoute = urlPath.startsWith('/loja/');
   const isMarketplaceRoute = urlPath === '/marketplace';
   const isLojaIaRoute = urlPath === '/loja-ia';
+  const isHubRoute = urlPath === '/hub';
+  const isAfiliadosRoute = urlPath === '/afiliados' || urlPath.startsWith('/afiliados/');
+  const isSejaVendedorRoute = urlPath === '/seja-vendedor';
 
-  if (!isProductRoute && !isStoreRoute && !isMarketplaceRoute && !isLojaIaRoute) {
+  if (!isProductRoute && !isStoreRoute && !isMarketplaceRoute && !isLojaIaRoute && !isHubRoute && !isAfiliadosRoute && !isSejaVendedorRoute) {
     return next();
   }
 
@@ -132,6 +156,15 @@ export async function handleSocialSharePreviews(req: Request, res: Response, nex
     } else if (isLojaIaRoute) {
       title = 'Crie sua Loja Virtual com IA no VEND+';
       description = 'Crie sua própria loja em minutos com Inteligência Artificial. Identidade visual exclusiva, catálogo organizado, logo e integração com redes sociais.';
+    } else if (isHubRoute) {
+      title = 'VEND+ Hub — Central de Divulgação e Oportunidades';
+      description = 'Descubra produtos elegíveis, compartilhe links exclusivos e fature comissões reais no ecossistema VEND+.';
+    } else if (isAfiliadosRoute) {
+      title = 'Programa Oficial de Afiliados VEND+ — Divulgue e Ganhe';
+      description = 'Seja um Afiliado Oficial VEND+. Escolha produtos elegíveis, gere seus links rastreáveis e receba repasses via PIX por vendas confirmadas.';
+    } else if (isSejaVendedorRoute) {
+      title = 'Seja um Vendedor VEND+ — Abra sua Loja Virtual com IA';
+      description = 'Faça parte dos primeiros vendedores VEND+. Cadastre seus produtos, automatize seu catálogo com IA e receba com garantia total Mercado Pago.';
     } else if (isStoreRoute) {
       const slug = urlPath.replace('/loja/', '').split('/')[0];
       const [store] = await db.select().from(stores).where(eq(stores.slug, slug)).limit(1);
